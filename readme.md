@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Ticket.io
 
 AI-powered Ticket Management System
@@ -105,6 +104,4 @@ A smart ticket management system that uses AI to automatically categorize, prior
 - MongoDB
 - Google Gemini API key
 - Mailtrap account (for email testing)
-=======
 
->>>>>>> f8444d4c030ecbdba7866826beec86fd71fa6eb0
