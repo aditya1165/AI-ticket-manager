@@ -30,6 +30,6 @@ app.use(
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
-    app.listen(PORT, () => console.log("🚀 Server at http://localhost:3000"));
+    app.listen(PORT,"0.0.0.0", () => console.log(`Server running on port ${PORT}`));
   })
   .catch((err) => console.error("❌ MongoDB error: ", err));
