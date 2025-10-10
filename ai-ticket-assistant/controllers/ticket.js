@@ -13,7 +13,7 @@ export const createTicket = async (req, res) => {
         .status(400)
         .json({ message: "Title and description are required" });
     }
-    const newTicket = Ticket.create({
+    const newTicket = await Ticket.create({
       title,
       description,
       createdBy: req.user._id.toString(),
@@ -22,7 +22,7 @@ export const createTicket = async (req, res) => {
     await inngest.send({
       name: "ticket/created",
       data: {
-        ticketId: (await newTicket)._id.toString(),
+        ticketId: newTicket._id.toString(),
         title,
         description,
         createdBy: req.user._id.toString(),
@@ -42,14 +42,21 @@ export const getTickets = async (req, res) => {
   try {
     const user = req.user;
     let tickets = [];
-    if (user.role !== "user") {
+    if (user.role === "admin") {
       tickets = await Ticket.find({})
-        .populate("assignedTo", ["email", "_id"])
-        .sort({ createdAt: -1 });
+        .populate("assignedTo", ["email", "_id"]) 
+        .populate("createdBy", ["email", "_id"]) 
+        .sort({ updatedAt: -1 });
+    } else if (user.role === "moderator") {
+      tickets = await Ticket.find({ assignedTo: user._id })
+        .populate("assignedTo", ["email", "_id"]) 
+        .populate("createdBy", ["email", "_id"]) 
+        .sort({ updatedAt: -1 });
     } else {      
       tickets = await Ticket.find({ createdBy: user._id })
-        .select("title description status createdAt")
-        .sort({ createdAt: -1 });
+        .select("title description status createdAt updatedAt priority assignedTo deadline helpfulNotes relatedSkills")
+        .populate("assignedTo", ["email", "_id"]) 
+        .sort({ updatedAt: -1 });
     }
     return res.status(200).json(tickets);
   } catch (error) {
@@ -64,19 +71,16 @@ export const getTicket = async (req, res) => {
     let ticket;
 
     if (user.role !== "user") {
-      ticket = await Ticket.findById(req.params.id).populate("assignedTo", [
-        "email",
-        "_id",
-      ]);
+      ticket = await Ticket.findById(req.params.id)
+        .populate("assignedTo", ["email", "_id"]) 
+        .populate("createdBy", ["email", "_id"]);
     } else {
       ticket = await Ticket.findOne({
         createdBy: user._id,
         _id: req.params.id,
-      }).select("title description status createdAt relatedSkills")
-      .populate("assignedTo", [
-        "email",
-        "_id",
-      ]);
+      })
+      .select("title description status createdAt updatedAt priority deadline helpfulNotes relatedSkills assignedTo")
+      .populate("assignedTo", ["email", "_id"]);
     }
     
     if (!ticket) {
@@ -171,4 +175,37 @@ export const getComments = async (req, res) => {
   });
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
   res.json({ comments: ticket.comments });
+};
+
+// Update ticket status
+export const updateTicketStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const allowedStatuses = ["To-Do", "In Progress", "Completed"];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const ticket = await Ticket.findById(id).populate("assignedTo createdBy");
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+    const user = req.user;
+    const isOwner = ticket.createdBy && ticket.createdBy.equals(user._id);
+    const isAssigned = ticket.assignedTo && ticket.assignedTo.equals(user._id);
+    const isAdmin = user.role === "admin";
+    const isModerator = user.role === "moderator";
+
+    // Permissions: admin can update any; moderator only if assigned; user only if owner
+    if (!(isAdmin || (isModerator && isAssigned) || (user.role === "user" && isOwner))) {
+      return res.status(403).json({ message: "Not allowed to update status" });
+    }
+
+    ticket.status = status;
+    await ticket.save();
+    return res.json({ message: "Status updated", ticket });
+  } catch (err) {
+    console.error("Error updating status", err.message);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
 };

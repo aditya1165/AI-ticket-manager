@@ -7,6 +7,8 @@ export default function TicketDetailsPage() {
   const { id } = useParams();
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
+  const API_BASE = (import.meta.env.VITE_SERVER_URL ?? "").toString().trim();
+  const [updating, setUpdating] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const token = localStorage.getItem("token");
@@ -14,16 +16,17 @@ export default function TicketDetailsPage() {
     const fetchTicket = async () => {
       try {
         const res = await fetch(
-          `${import.meta.env.VITE_SERVER_URL}/tickets/${id}`,
+          `${API_BASE}/api/tickets/${id}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
           }
         );
-        const data = await res.json();
+        const ct = res.headers.get("content-type") || "";
+        const data = ct.includes("application/json") ? await res.json() : { message: await res.text() };
         if (res.ok) {
-          setTicket(data.ticket);
+          setTicket(data.ticket || data);
         } else {
           alert(data.message || "Failed to fetch ticket");
         }
@@ -36,7 +39,33 @@ export default function TicketDetailsPage() {
     };
 
     fetchTicket();
-  }, [id]);
+  }, [id, token, API_BASE]);
+
+  const handleStatusChange = async (newStatus) => {
+    try {
+      setUpdating(true);
+      const res = await fetch(`${API_BASE}/api/tickets/${id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const ct = res.headers.get("content-type") || "";
+      const data = ct.includes("application/json") ? await res.json() : { message: await res.text() };
+      if (!res.ok) {
+        alert(data.message || "Failed to update status");
+        return;
+      }
+      setTicket(prev => ({ ...prev, status: newStatus, updatedAt: new Date().toISOString() }));
+    } catch (e) {
+      console.error("Failed to update status", e);
+      alert("Failed to update status");
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   if (loading)
     return <div className="text-center mt-10">Loading ticket details...</div>;
@@ -47,19 +76,49 @@ export default function TicketDetailsPage() {
       <h2 className="text-2xl font-bold mb-4">Ticket Details</h2>
 
       <div className="card bg-gray-800 shadow p-4 space-y-4">
-        <h3 className="text-xl font-semibold">{ticket.title}</h3>
+        <h3 className="text-xl font-semibold flex items-center gap-2">
+          {ticket.status === 'Completed' && (
+            <span className="text-green-400" title="Completed">✓</span>
+          )}
+          {ticket.title}
+        </h3>
         <p>{ticket.description}</p>
 
         {/* Conditionally render extended details */}
         {ticket.status && (
           <>
             <div className="divider">Metadata</div>
-            <p>
-              <strong>Status:</strong> {ticket.status}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="whitespace-nowrap">
+                <strong>Status:</strong> {ticket.status}
+              </p>
+              <select
+                className="select select-bordered select-sm w-40 ml-2"
+                value={ticket.status}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                disabled={updating}
+                aria-label="Update ticket status"
+              >
+                <option>To-Do</option>
+                <option>In Progress</option>
+                <option>Completed</option>
+              </select>
+            </div>
             {ticket.priority && (
               <p>
                 <strong>Priority:</strong> {ticket.priority}
+              </p>
+            )}
+
+            {ticket.createdBy?.email && (
+              <p>
+                <strong>Created By:</strong> {ticket.createdBy.email}
+              </p>
+            )}
+
+            {ticket.assignedTo?.email && (
+              <p>
+                <strong>Assigned To:</strong> {ticket.assignedTo.email}
               </p>
             )}
 
@@ -79,15 +138,19 @@ export default function TicketDetailsPage() {
               </div>
             )}
 
-            {ticket.assignedTo && (
-              <p>
-                <strong>Assigned To:</strong> {ticket.assignedTo?.email}
-              </p>
-            )}
-
             {ticket.createdAt && (
               <p className="text-sm text-gray-500 mt-2">
                 Created At: {new Date(ticket.createdAt).toLocaleString()}
+              </p>
+            )}
+            {ticket.updatedAt && (
+              <p className="text-sm text-gray-500">
+                Updated At: {new Date(ticket.updatedAt).toLocaleString()}
+              </p>
+            )}
+            {ticket.deadline && (
+              <p className="text-sm text-gray-500">
+                Deadline: {new Date(ticket.deadline).toLocaleDateString()}
               </p>
             )}
           </>

@@ -6,19 +6,21 @@ export default function TicketComments({ ticket, user }) {
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const API_BASE = (import.meta.env.VITE_SERVER_URL ?? "").toString().trim();
 
   // Fetch comments
   useEffect(() => {
     const fetchComments = async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/tickets/${id}/comments`, {
+      const res = await fetch(`${API_BASE}/api/tickets/${id}/comments`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
+      const ct = res.headers.get("content-type") || "";
+      const data = ct.includes("application/json") ? await res.json() : { comments: [] };
       setComments(data.comments || []);
     };
     fetchComments();
-  }, [id]);
+  }, [id, API_BASE]);
 
   // Who can comment?
   const canInitiate =
@@ -36,7 +38,7 @@ export default function TicketComments({ ticket, user }) {
     e.preventDefault();
     setLoading(true);
   const token = localStorage.getItem("token");
-    const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/tickets/${id}/comments`, {
+    const res = await fetch(`${API_BASE}/api/tickets/${id}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -44,7 +46,8 @@ export default function TicketComments({ ticket, user }) {
       },
       body: JSON.stringify({ text })
     });
-    const data = await res.json();
+    const ct = res.headers.get("content-type") || "";
+    const data = ct.includes("application/json") ? await res.json() : { comments: [] };
     setComments(data.comments || []);
     setText("");
     setLoading(false);
