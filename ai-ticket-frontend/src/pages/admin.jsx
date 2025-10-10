@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -9,11 +9,7 @@ export default function AdminPanel() {
 
   const token = localStorage.getItem("token");
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/auth/users`, {
         headers: {
@@ -30,7 +26,11 @@ export default function AdminPanel() {
     } catch (err) {
       console.error("Error fetching users", err);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const handleEditClick = (user) => {
     setEditingUser(user.email);
