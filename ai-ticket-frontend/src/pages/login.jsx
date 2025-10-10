@@ -4,14 +4,32 @@ import { useNavigate, Link } from "react-router-dom";
 export default function LoginPage() {
   const [form, setForm] = useState({ identifier: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
   const navigate = useNavigate();
+
+  const validate = () => {
+    const errs = {};
+    if (!form.identifier) {
+      errs.identifier = "Username or Email is required.";
+    }
+    if (!form.password) {
+      errs.password = "Password is required.";
+    }
+    return errs;
+  };
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
-  }
+    setErrors({ ...errors, [e.target.name]: undefined });
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/auth/login`, {
@@ -25,10 +43,10 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(data.user));
         navigate("/");
       } else {
-        alert(data.message || "Login failed");
+        setErrors({ form: data.message || "Login failed" });
       }
     } catch (err) {
-      alert("Something went wrong");
+      setErrors({ form: "Something went wrong" });
       console.error(err);
     } finally {
       setLoading(false);
@@ -49,20 +67,25 @@ export default function LoginPage() {
             type="text"
             name="identifier"
             placeholder="Username or Email"
-            className="input input-bordered mb-3"
+            className="input input-bordered mb-1"
             value={form.identifier}
             onChange={handleChange}
             required
+            autoComplete="username"
           />
+          {errors.identifier && <div className="text-red-500 text-xs mb-2">{errors.identifier}</div>}
           <input
             type="password"
             name="password"
             placeholder="Password"
-            className="input input-bordered mb-3"
+            className="input input-bordered mb-1"
             value={form.password}
             onChange={handleChange}
             required
+            autoComplete="current-password"
           />
+          {errors.password && <div className="text-red-500 text-xs mb-2">{errors.password}</div>}
+          {errors.form && <div className="text-red-500 text-xs mb-2">{errors.form}</div>}
           <button
             type="submit"
             className="btn btn-primary w-full mb-2"

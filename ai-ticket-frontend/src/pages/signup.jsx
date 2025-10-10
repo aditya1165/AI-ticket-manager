@@ -2,16 +2,41 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function SignupPage() {
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ username: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
   const navigate = useNavigate();
+
+  const validate = () => {
+    const errs = {};
+    if (!form.username || form.username.length < 3) {
+      errs.username = "Username must be at least 3 characters.";
+    }
+    if (!form.email) {
+      errs.email = "Email is required.";
+    } else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email)) {
+      errs.email = "Invalid email format.";
+    }
+    if (!form.password) {
+      errs.password = "Password is required.";
+    } else if (form.password.length < 6) {
+      errs.password = "Password must be at least 6 characters.";
+    }
+    return errs;
+  };
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+    setErrors({ ...errors, [e.target.name]: undefined });
   };
 
   const handleSignup = async (e) => {
     e.preventDefault();
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(
@@ -32,10 +57,10 @@ export default function SignupPage() {
         localStorage.setItem("user", JSON.stringify(data.user));
         navigate("/");
       } else {
-        alert(data.message || "Signup failed");
+        setErrors({ form: data.message || "Signup failed" });
       }
     } catch (err) {
-      alert("Something went wrong");
+      setErrors({ form: "Something went wrong" });
       console.error(err);
     } finally {
       setLoading(false);
@@ -53,32 +78,39 @@ export default function SignupPage() {
         <form onSubmit={handleSignup} className="card-body">
           <h2 className="card-title justify-center mb-4">Sign Up</h2>
           <input
-            type="username"
+            type="text"
             name="username"
             placeholder="Username"
-            className="input input-bordered mb-3"
+            className="input input-bordered mb-1"
             value={form.username}
             onChange={handleChange}
             required
+            autoComplete="username"
           />
+          {errors.username && <div className="text-red-500 text-xs mb-2">{errors.username}</div>}
           <input
             type="email"
             name="email"
             placeholder="Email"
-            className="input input-bordered mb-3"
+            className="input input-bordered mb-1"
             value={form.email}
             onChange={handleChange}
             required
+            autoComplete="email"
           />
+          {errors.email && <div className="text-red-500 text-xs mb-2">{errors.email}</div>}
           <input
             type="password"
             name="password"
             placeholder="Password"
-            className="input input-bordered mb-3"
+            className="input input-bordered mb-1"
             value={form.password}
             onChange={handleChange}
             required
+            autoComplete="new-password"
           />
+          {errors.password && <div className="text-red-500 text-xs mb-2">{errors.password}</div>}
+          {errors.form && <div className="text-red-500 text-xs mb-2">{errors.form}</div>}
           <button
             type="submit"
             className="btn btn-primary w-full mb-2"

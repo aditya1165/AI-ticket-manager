@@ -35,7 +35,7 @@ export default function TicketComments({ ticket, user }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const token = localStorage.getItem("token");
+  const token = localStorage.getItem("token");
     const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/tickets/${id}/comments`, {
       method: "POST",
       headers: {
