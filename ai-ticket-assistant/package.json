@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon index.js",
-    "inngest-dev": "npx inngest-cli@latest dev"
+    "start":"node index.js",
+    "inngest-dev": "npx inngest-cli@latest dev",
+    "inngest-start": "npx inngest-cli@latest start"
   },
   "keywords": [],
   "author": "",
