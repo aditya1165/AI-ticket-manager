@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Navbar from "../components/navbar";
+import EmptyState from "../components/empty-state";
  
 
 export default function Tickets() {
@@ -22,7 +23,7 @@ export default function Tickets() {
 
   const fetchTickets = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/tickets`, {
+      const res = await fetch(`${API_BASE}/tickets`, {
         headers: { Authorization: `Bearer ${token}` },
         method: "GET",
       });
@@ -57,7 +58,7 @@ export default function Tickets() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/tickets`, {
+      const res = await fetch(`${API_BASE}/tickets`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -85,7 +86,7 @@ export default function Tickets() {
   const handleStatusChange = async (id, newStatus) => {
     try {
       setUpdatingId(id);
-      const res = await fetch(`${API_BASE}/api/tickets/${id}/status`, {
+      const res = await fetch(`${API_BASE}/tickets/${id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -111,11 +112,12 @@ export default function Tickets() {
 
   // Dashboard summary
   const summary = useMemo(() => {
-    const s = { total: tickets.length, todo: 0, inprog: 0, done: 0 };
-    tickets.forEach(t => {
-      if (t.status === "To-Do") s.todo++;
-      else if (t.status === "In Progress") s.inprog++;
-      else if (t.status === "Completed") s.done++;
+    const list = Array.isArray(tickets) ? tickets : [];
+    const s = { total: list.length, todo: 0, inprog: 0, done: 0 };
+    list.forEach((t) => {
+      if (t?.status === "To-Do") s.todo++;
+      else if (t?.status === "In Progress") s.inprog++;
+      else if (t?.status === "Completed") s.done++;
     });
     return s;
   }, [tickets]);
@@ -158,8 +160,9 @@ export default function Tickets() {
     return arr;
   }, [tickets, sortBy, sortOrder]);
   const ticketsPerPage = 5;
-  const totalPages = Math.ceil(sortedTickets.length / ticketsPerPage);
-  const paginatedTickets = sortedTickets.slice((page - 1) * ticketsPerPage, page * ticketsPerPage);
+  const safeSorted = Array.isArray(sortedTickets) ? sortedTickets : [];
+  const totalPages = Math.ceil(safeSorted.length / ticketsPerPage) || 0;
+  const paginatedTickets = safeSorted.slice((page - 1) * ticketsPerPage, page * ticketsPerPage);
 
   return (
     <>
@@ -273,7 +276,7 @@ export default function Tickets() {
         </div>
 
         <div className="space-y-3">
-          {paginatedTickets.map((ticket) => (
+          {Array.isArray(paginatedTickets) && paginatedTickets.map((ticket) => (
             <Link
               key={ticket._id}
               className="card shadow-md p-4 bg-gray-800"
@@ -311,28 +314,37 @@ export default function Tickets() {
               <p className="text-sm text-gray-500 mb-0">
                 Created At: {new Date(ticket.createdAt).toLocaleString()}
               </p>
-              {ticket.updatedAt && (
+              {(currentUser && currentUser.role !== 'user' && ticket.updatedAt) && (
                 <p className="text-xs text-gray-400">Last Updated: {new Date(ticket.updatedAt).toLocaleString()}</p>
               )}
-              {/* Inline status control */}
-              <div className="mt-3">
-                <label className="text-xs text-gray-400 mr-2">Update Status:</label>
-                <select
-                  className="select select-bordered select-sm w-40"
-                  value={ticket.status}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onChange={(e) => handleStatusChange(ticket._id, e.target.value)}
-                  disabled={updatingId === ticket._id}
-                  aria-label="Update ticket status"
-                >
-                  <option>To-Do</option>
-                  <option>In Progress</option>
-                  <option>Completed</option>
-                </select>
-              </div>
+              {/* Inline status control (only for admin or assigned moderator) */}
+              {(currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator')) && (
+                <div className="mt-3">
+                  <label className="text-xs text-gray-400 mr-2">Update Status:</label>
+                  <select
+                    className="select select-bordered select-sm w-40"
+                    value={ticket.status}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onChange={(e) => handleStatusChange(ticket._id, e.target.value)}
+                    disabled={updatingId === ticket._id}
+                    aria-label="Update ticket status"
+                  >
+                    <option>To-Do</option>
+                    <option>In Progress</option>
+                    <option>Completed</option>
+                  </select>
+                </div>
+              )}
             </Link>
           ))}
-          {tickets.length === 0 && <p>No tickets submitted yet.</p>}
+          {(Array.isArray(tickets) ? tickets.length : 0) === 0 && (
+            <EmptyState
+              title="No tickets yet"
+              message="You don't have any tickets. Create one to get started."
+              ctaText="Create a ticket"
+              onCta={() => setShowCreate(true)}
+            />
+          )}
         </div>
 
         {/* Pagination controls */}

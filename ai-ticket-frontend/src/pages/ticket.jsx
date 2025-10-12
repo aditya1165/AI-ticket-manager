@@ -16,7 +16,7 @@ export default function TicketDetailsPage() {
     const fetchTicket = async () => {
       try {
         const res = await fetch(
-          `${API_BASE}/api/tickets/${id}`,
+          `${API_BASE}/tickets/${id}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -44,7 +44,7 @@ export default function TicketDetailsPage() {
   const handleStatusChange = async (newStatus) => {
     try {
       setUpdating(true);
-      const res = await fetch(`${API_BASE}/api/tickets/${id}/status`, {
+      const res = await fetch(`${API_BASE}/tickets/${id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -92,17 +92,19 @@ export default function TicketDetailsPage() {
               <p className="whitespace-nowrap">
                 <strong>Status:</strong> {ticket.status}
               </p>
-              <select
-                className="select select-bordered select-sm w-40 ml-2"
-                value={ticket.status}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                disabled={updating}
-                aria-label="Update ticket status"
-              >
-                <option>To-Do</option>
-                <option>In Progress</option>
-                <option>Completed</option>
-              </select>
+              {(user && (user.role === 'admin' || (user.role === 'moderator' && ticket.assignedTo?._id === user._id))) && (
+                <select
+                  className="select select-bordered select-sm w-40 ml-2"
+                  value={ticket.status}
+                  onChange={(e) => handleStatusChange(e.target.value)}
+                  disabled={updating}
+                  aria-label="Update ticket status"
+                >
+                  <option>To-Do</option>
+                  <option>In Progress</option>
+                  <option>Completed</option>
+                </select>
+              )}
             </div>
             {ticket.priority && (
               <p>
@@ -110,26 +112,26 @@ export default function TicketDetailsPage() {
               </p>
             )}
 
-            {ticket.createdBy?.email && (
+            {ticket?.createdBy?.email && (
               <p>
                 <strong>Created By:</strong> {ticket.createdBy.email}
               </p>
             )}
 
-            {ticket.assignedTo?.email && (
+            {ticket?.assignedTo?.email && (
               <p>
                 <strong>Assigned To:</strong> {ticket.assignedTo.email}
               </p>
             )}
 
-            {ticket.relatedSkills?.length > 0 && (
+            {(user && user.role !== 'user' && Array.isArray(ticket?.relatedSkills) && ticket.relatedSkills.length > 0) && (
               <p>
                 <strong>Related Skills:</strong>{" "}
                 {ticket.relatedSkills.join(", ")}
               </p>
             )}
 
-            {ticket.helpfulNotes && (
+            {(user && user.role !== 'user' && ticket?.helpfulNotes) && (
               <div>
                 <strong>Helpful Notes:</strong>
                 <div className="prose max-w-none rounded mt-2">
@@ -143,7 +145,7 @@ export default function TicketDetailsPage() {
                 Created At: {new Date(ticket.createdAt).toLocaleString()}
               </p>
             )}
-            {ticket.updatedAt && (
+            {(user && user.role !== 'user' && ticket.updatedAt) && (
               <p className="text-sm text-gray-500">
                 Updated At: {new Date(ticket.updatedAt).toLocaleString()}
               </p>

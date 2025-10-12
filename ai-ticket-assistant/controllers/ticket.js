@@ -196,8 +196,8 @@ export const updateTicketStatus = async (req, res) => {
     const isAdmin = user.role === "admin";
     const isModerator = user.role === "moderator";
 
-    // Permissions: admin can update any; moderator only if assigned; user only if owner
-    if (!(isAdmin || (isModerator && isAssigned) || (user.role === "user" && isOwner))) {
+    // Permissions: admin can update any; moderator only if assigned; regular users cannot update status
+    if (!(isAdmin || (isModerator && isAssigned))) {
       return res.status(403).json({ message: "Not allowed to update status" });
     }
 

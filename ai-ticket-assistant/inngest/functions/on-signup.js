@@ -18,11 +18,8 @@ export const onUserSignup = inngest.createFunction(
       });
 
       await step.run("send-welcome-email", async () => {
-        const subject = `Welcome to the app`;
-        const message = `Hi,
-            \n\n
-            Thanks for signing up. We're glad to have you onboard!
-            `;
+        const subject = `Welcome to Ticket.io — your AI ticket assistant`;
+        const message = `Hi ${user.username || "there"},\n\nThanks for signing up for Ticket.io. We're excited to have you onboard.\n\nNext steps:\n- Create your first ticket from the dashboard\n- Add skills to your profile (if you're applying to moderate)\n- Visit the documentation or help section in the app to learn more\n\nIf you have any questions, reply to this email and we'll help you out.\n\nBest,\nThe Ticket.io Team`;
         await sendMail(user.email, subject, message);
       });
 

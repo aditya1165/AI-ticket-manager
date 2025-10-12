@@ -12,7 +12,7 @@ export default function TicketComments({ ticket, user }) {
   useEffect(() => {
     const fetchComments = async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/tickets/${id}/comments`, {
+      const res = await fetch(`${API_BASE}/tickets/${id}/comments`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const ct = res.headers.get("content-type") || "";
@@ -23,22 +23,24 @@ export default function TicketComments({ ticket, user }) {
   }, [id, API_BASE]);
 
   // Who can comment?
+  const safeUser = user || {};
+  const safeTicket = ticket || {};
   const canInitiate =
-    comments.length === 0 &&
-    (user.role === "admin" ||
-      (user.role === "moderator" && ticket.assignedTo?._id === user._id));
+    (Array.isArray(comments) ? comments.length === 0 : true) &&
+    (safeUser.role === "admin" ||
+      (safeUser.role === "moderator" && safeTicket.assignedTo?._id === safeUser._id));
   const canReply =
-    comments.length > 0 &&
-    (user.role === "admin" ||
-        (user.role === "moderator" && ticket.assignedTo?._id === user._id) ||
-        (user.role === "user"));
+    (Array.isArray(comments) ? comments.length > 0 : false) &&
+    (safeUser.role === "admin" ||
+        (safeUser.role === "moderator" && safeTicket.assignedTo?._id === safeUser._id) ||
+        (safeUser.role === "user"));
 
   // Add comment
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
   const token = localStorage.getItem("token");
-    const res = await fetch(`${API_BASE}/api/tickets/${id}/comments`, {
+    const res = await fetch(`${API_BASE}/tickets/${id}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -73,7 +75,7 @@ export default function TicketComments({ ticket, user }) {
             >
               <span className="font-semibold">{c.role}</span>: {c.text}
               <div className="text-xs text-gray-500 mt-1">
-                {new Date(c.createdAt).toLocaleString()}
+                {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
               </div>
             </div>
           </div>

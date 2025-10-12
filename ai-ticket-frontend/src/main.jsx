@@ -8,6 +8,8 @@ import TicketDetailsPage from "./pages/ticket.jsx";
 import Login from "./pages/login.jsx";
 import Signup from "./pages/signup.jsx";
 import Admin from "./pages/admin.jsx";
+import ApplyModerator from "./pages/apply-moderator.jsx";
+import ModRequestsPage from "./pages/mod-requests.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -45,6 +47,22 @@ createRoot(document.getElementById("root")).render(
             </CheckAuth>
           }
         />
+          <Route
+            path="/apply-moderator"
+            element={
+              <CheckAuth protectedRoute={true}>
+                <ApplyModerator />
+              </CheckAuth>
+            }
+          />
+          <Route
+            path="/admin/mod-requests"
+            element={
+              <CheckAuth protectedRoute={true}>
+                <ModRequestsPage />
+              </CheckAuth>
+            }
+          />
         <Route
           path="/admin"
           element={

@@ -1,51 +1,76 @@
-import nodemailer from "nodemailer";
+// SendGrid-only mailer. SMTP/nodemailer removed — use a provider API key.
 
-export const sendMail = async (to, subject, text) => {
+function parseFrom(rawFrom) {
+  const fromAddress = (rawFrom || '"Ticket.io" <no-reply@example.com>').trim();
+  const m = fromAddress.match(/^(?:"?([^"<]+)"?\s*)?<([^>]+)>$/);
+  if (m) return { name: m[1] ? m[1].trim() : undefined, email: m[2].trim(), raw: fromAddress };
+  // fallback: try to split
+  const parts = fromAddress.split("<");
+  if (parts.length === 2) return { name: parts[0].replace(/"/g, "").trim(), email: parts[1].replace(/>/g, "").trim(), raw: fromAddress };
+  return { raw: fromAddress, email: fromAddress.replace(/"/g, "") };
+}
+
+export const sendMail = async (to, subject, text, html) => {
+  const provider = (process.env.MAIL_API_PROVIDER || "").toLowerCase();
+  const fromRaw = process.env.MAIL_FROM || '"Ticket.io" <no-reply@example.com>';
+  const from = parseFrom(fromRaw);
+
+  // helper: normalize recipients to array of objects {email}
+  const toArray = (input) => {
+    if (!input) return [];
+    if (Array.isArray(input)) return input.map((t) => ({ email: String(t).trim() }));
+    // allow comma separated or semicolon separated
+    return String(input).split(/[;,]+/).map((t) => ({ email: t.trim() })).filter((x) => x.email);
+  };
+
+  // Only SendGrid provider is supported now
+  const apiKey = process.env.MAIL_API_KEY || process.env.SENDGRID_API_KEY;
+  if (!apiKey) throw new Error("MAIL_API_KEY / SENDGRID_API_KEY not set");
+
+  const recipients = toArray(to);
+  if (recipients.length === 0) throw new Error("No recipients specified for sendMail");
+
+  const mailHost = process.env.MAIL_API_HOST || "https://api.sendgrid.com/v3/mail/send";
+  const replyToRaw = process.env.MAIL_REPLY_TO;
+  const replyTo = replyToRaw ? parseFrom(replyToRaw) : undefined;
+
+  const payload = {
+    personalizations: [
+      {
+        to: recipients,
+      },
+    ],
+    from: { email: from.email, name: from.name || "" },
+    subject: subject || "",
+    content: [],
+  };
+
+  if (html) payload.content.push({ type: "text/html", value: html });
+  if (text) payload.content.push({ type: "text/plain", value: text });
+  if (payload.content.length === 0) payload.content.push({ type: "text/plain", value: subject || "" });
+
+  if (replyTo && replyTo.email) payload.reply_to = { email: replyTo.email, name: replyTo.name || undefined };
+
   try {
-    const smtpHost = process.env.MAILTRAP_SMTP_HOST;
-    const smtpPort = Number(process.env.MAILTRAP_SMTP_PORT) || 587;
-    const smtpUser = process.env.MAILTRAP_SMTP_USER;
-    const smtpPass = process.env.MAILTRAP_SMTP_PASS;
-
-    // If MAIL_FROM has surrounding spaces (common mistake), trim it
-    const rawFrom = process.env.MAIL_FROM || '"Ticket.io" <no-reply@example.com>';
-    const fromAddress = rawFrom.trim();
-
-    const secure = smtpPort === 465; // use TLS for 465
-
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure,
-      auth: smtpUser && smtpPass ? { user: smtpUser, pass: smtpPass } : undefined,
+    const res = await fetch(mailHost, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
     });
 
-    // Helpful debug: verify connection configuration before sending
-    try {
-      await transporter.verify();
-    } catch (verifyErr) {
-      console.error("❌ Mail transporter verification failed:", verifyErr && verifyErr.message ? verifyErr.message : verifyErr);
-      // continue - sendMail will surface the real error as well
+    if (!res.ok) {
+      const body = await res.text();
+      const err = new Error(`SendGrid API error ${res.status}: ${body}`);
+      console.error(err.message);
+      throw err;
     }
 
-    // Extract bare email for envelope (e.g. from "Name <email@domain.com>")
-    const envelopeFromMatch = fromAddress.match(/<([^>]+)>/);
-    const envelopeFrom = envelopeFromMatch ? envelopeFromMatch[1] : fromAddress.replace(/"/g, '');
-
-    const mailOptions = {
-      from: fromAddress,
-      to,
-      subject,
-      text,
-      envelope: { from: envelopeFrom, to },
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-
-    return info;
-  } catch (error) {
-    console.error("❌ Mail error", error && error.message ? error.message : error);
-    if (error && error.response) console.error("SMTP response:", error.response);
-    throw error;
+    return { provider: "sendgrid", status: res.status };
+  } catch (err) {
+    console.error("❌ SendGrid send error:", err && err.message ? err.message : err);
+    throw err;
   }
 };

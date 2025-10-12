@@ -36,7 +36,17 @@ export default function Navbar() {
             <span className="font-semibold">{user?.email}</span>
             {user?.role === "admin" && (
               <Link to="/admin" className="btn btn-accent btn-sm">
-                Admin
+                Users
+              </Link>
+            )}
+            {user && user.role !== "admin" && (
+              <Link to="/apply-moderator" className="btn btn-ghost btn-sm">
+                Apply Moderator
+              </Link>
+            )}
+            {user?.role === "admin" && (
+              <Link to="/admin/mod-requests" className="btn btn-secondary btn-sm">
+                View Moderator requests
               </Link>
             )}
             <button onClick={logout} className="btn btn-error btn-sm">
