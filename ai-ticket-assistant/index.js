@@ -17,6 +17,9 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+// Health and readiness endpoints for Render / health checks
+app.get("/", (req, res) => res.send({ status: "ok", service: "ai-ticket-assistant" }));
+app.get("/api/health", (req, res) => res.send({ status: "ok" }));
 app.use("/api/auth", userRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/mod-requests", modReqRoutes);
