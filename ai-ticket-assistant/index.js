@@ -17,6 +17,35 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+// Optional: serve built frontend and fallback to index.html for client-side routes
+import fs from "fs";
+import path from "path";
+
+// detect common frontend build locations
+const possibleFrontendPaths = [
+  path.join(process.cwd(), "../ai-ticket-frontend/dist"),
+  path.join(process.cwd(), "./dist"),
+];
+
+let frontendDist = null;
+for (const p of possibleFrontendPaths) {
+  if (fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"))) {
+    frontendDist = p;
+    break;
+  }
+}
+
+if (frontendDist) {
+  console.log(`Serving frontend from ${frontendDist}`);
+  app.use(express.static(frontendDist));
+
+  // SPA fallback: for any non-API GET request, serve index.html
+  app.get("/*", (req, res, next) => {
+    if (req.method !== "GET") return next();
+    if (req.path.startsWith("/api/")) return next();
+    res.sendFile(path.join(frontendDist, "index.html"));
+  });
+}
 // Health and readiness endpoints for Render / health checks
 app.get("/", (req, res) => res.send({ status: "ok", service: "ai-ticket-assistant" }));
 app.get("/api/health", (req, res) => res.send({ status: "ok" }));

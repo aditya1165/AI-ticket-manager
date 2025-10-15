@@ -39,12 +39,12 @@ export default function Navbar() {
                 Users
               </Link>
             )}
-            {user && user.role !== "admin" && (
+            {user && user.role !== "admin" && user.role !== "moderator" && (
               <Link to="/apply-moderator" className="btn btn-ghost btn-sm">
                 Apply Moderator
               </Link>
             )}
-            {user?.role === "admin" && (
+            {(user?.role === "admin" || user?.role === "moderator") && (
               <Link to="/admin/mod-requests" className="btn btn-secondary btn-sm">
                 View Moderator requests
               </Link>

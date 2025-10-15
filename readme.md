@@ -65,47 +65,18 @@ AI-powered Ticket Management System
 - **Email:** Nodemailer, Mailtrap
 
 Note: The mailer was updated to prefer the SendGrid HTTP API. The project previously used nodemailer for SMTP testing; the production path uses SendGrid. Configure environment variables accordingly.
+---
 
-## User story — Apply to be a Moderator
+## Live demo
 
-As a registered user, I want to apply to become a moderator so that I can be considered to help triage and manage tickets matching my skills.
+The project is live at: https://ai-ticket-manager-frontend.onrender.com/login
 
-Acceptance criteria
-- The user must be authenticated to apply.
-- Admin users cannot apply (UI and backend validation prevent this).
-- The application form asks for skills (comma-separated). Username and email are prefilled from the user's profile.
-- If the user already has a pending application, the UI shows a clear message and prevents duplicate submissions.
-- Admins and Moderators can view pending requests, inspect applicant details (username, email, skills, application time), and accept or reject applications.
-- On accept, the applicant's role is set to `moderator`, their skills are merged into their profile, and an email notifies the applicant of the decision.
-- On reject, an email notifies the applicant of the decision.
+Test credentials (pre-created account):
 
-Developer notes
-- Backend endpoints:
-   - POST /api/mod-requests — Create a new moderator application (authenticated user)
-   - GET /api/mod-requests/me — Get the authenticated user's latest application (if any)
-   - GET /api/mod-requests — List pending applications (moderator/admin only)
-   - POST /api/mod-requests/:id/decide — Accept or reject an application (moderator/admin only)
-- Mailer: uses SendGrid API via environment variable `MAIL_API_KEY` / `SENDGRID_API_KEY` and `MAIL_FROM`.
+- id: testuser@example.com
+- pass: password123
 
-Visualization timeline (applicant perspective)
-
-```mermaid
-gantt
-      title Moderator application — applicant timeline
-      dateFormat  YYYY-MM-DD
-      section Apply
-      Fill form           :a1, 2025-10-11, 1d
-      Submission (POST)    :a2, after a1, 1d
-      Notify applicant     :a3, after a2, 1d
-      section Review
-      Reviewer notified    :r1, after a2, 3d
-      Reviewer decision    :r2, after r1, 3d
-      section Outcome
-      Applicant notified  :o1, after r2, 1d
-```
-
-If your Markdown renderer does not support Mermaid, the timeline reads: Apply → Submit → Reviewer notified → Reviewer decision → Applicant notified.
-
+You can also create your own account from the Signup page and create tickets on your own — the app supports signing up, logging in, creating tickets, and receiving email notifications (when mailer is configured).
 
 ---
 

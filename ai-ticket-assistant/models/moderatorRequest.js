@@ -8,6 +8,7 @@ const moderatorRequestSchema = new mongoose.Schema({
   status: { type: String, enum: ["pending", "accepted", "rejected"], default: "pending" },
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   createdAt: { type: Date, default: Date.now },
+  rejectedAt: { type: Date, default: null },
 });
 
 export default mongoose.model("ModeratorRequest", moderatorRequestSchema);

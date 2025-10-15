@@ -8,10 +8,23 @@ export const createRequest = async (req, res) => {
     const applicantId = req.user._id;
     // Admins cannot apply to be moderator
     if (req.user.role === "admin") return res.status(400).json({ message: "Admins cannot apply to be moderators" });
-    const skillsArr = (skills || "").split(",").map((s) => s.trim()).filter(Boolean);
+    // Normalize skills: lowercase, trim, dedupe
+    const skillsArrRaw = (skills || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const skillsArr = Array.from(new Set(skillsArrRaw.map((s) => s.toLowerCase()))).map((s) => s.replace(/\s+/g, " "));
 
     const existing = await ModeratorRequest.findOne({ applicant: applicantId, status: "pending" });
     if (existing) return res.status(400).json({ message: "You already have a pending request" });
+
+    // Check for recent rejection cooldown (72 hours)
+    const lastRejected = await ModeratorRequest.findOne({ applicant: applicantId, status: "rejected" }).sort({ rejectedAt: -1 });
+    if (lastRejected && lastRejected.rejectedAt) {
+      const diffMs = Date.now() - new Date(lastRejected.rejectedAt).getTime();
+      const hours = diffMs / (1000 * 60 * 60);
+      if (hours < 72) {
+        const waitHours = Math.ceil(72 - hours);
+        return res.status(400).json({ message: `You were recently rejected. Please wait ${waitHours} more hour(s) before reapplying.`, cooldownHours: waitHours });
+      }
+    }
 
     const reqDoc = await ModeratorRequest.create({ applicant: applicantId, username, email, skills: skillsArr });
 
@@ -43,7 +56,14 @@ export const getMyRequest = async (req, res) => {
   try {
     const applicantId = req.user._id;
     const reqDoc = await ModeratorRequest.findOne({ applicant: applicantId }).sort({ createdAt: -1 });
-    return res.json({ request: reqDoc || null });
+    // If last rejected and within cooldown, include cooldown info
+    let cooldownHours = 0;
+    if (reqDoc && reqDoc.status === "rejected" && reqDoc.rejectedAt) {
+      const diffMs = Date.now() - new Date(reqDoc.rejectedAt).getTime();
+      const hours = diffMs / (1000 * 60 * 60);
+      if (hours < 72) cooldownHours = Math.ceil(72 - hours);
+    }
+    return res.json({ request: reqDoc || null, cooldownHours });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });
@@ -75,6 +95,7 @@ export const decideRequest = async (req, res) => {
 
     reqDoc.status = action === "accept" ? "accepted" : "rejected";
     reqDoc.reviewedBy = req.user._id;
+  if (action === "reject") reqDoc.rejectedAt = new Date();
     await reqDoc.save();
 
     // If accepted, update user role and add skills

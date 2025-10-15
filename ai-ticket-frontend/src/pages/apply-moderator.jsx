@@ -19,7 +19,9 @@ export default function ApplyModerator() {
         const token = localStorage.getItem("token");
         const res = await fetch(`${API_BASE}/mod-requests/me`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await res.json();
-        if (res.ok && data.request) setExisting(data.request);
+    if (res.ok && data.request) setExisting(data.request);
+    // server may return cooldown info
+    if (res.ok && data.cooldownHours) setExisting((r) => ({ ...(r || {}), cooldownHours: data.cooldownHours }));
       } catch (e) { console.error(e); }
     })();
   }, [API_BASE]);
@@ -31,10 +33,15 @@ export default function ApplyModerator() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
+      // preprocess skills: normalize, lowercase, dedupe
+      const rawSkills = (form.skills || "").split(",").map((s) => s.trim()).filter(Boolean);
+      const normalized = Array.from(new Set(rawSkills.map((s) => s.toLowerCase().replace(/\s+/g, ' '))));
+      const payload = { ...form, skills: normalized.join(",") };
+
       const res = await fetch(`${API_BASE}/mod-requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) alert("Application submitted");
@@ -53,12 +60,17 @@ export default function ApplyModerator() {
       {isAdmin ? (
         <div className="p-4 bg-yellow-50 rounded">Admins cannot apply to be moderators.</div>
       ) : existing ? (
-        <div className="p-4 bg-base-200 rounded">You have already applied for the moderator position. We'll contact you once a decision has been made.</div>
+        existing.cooldownHours ? (
+          <div className="p-4 bg-base-200 rounded">You were recently rejected. Please wait {existing.cooldownHours} more hour(s) before reapplying.</div>
+        ) : (
+          <div className="p-4 bg-base-200 rounded">You have already applied for the moderator position. We'll contact you once a decision has been made.</div>
+        )
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
-          <input name="username" value={form.username} onChange={handleChange} placeholder="Username" className="input input-bordered w-full" required />
-          <input name="email" value={form.email} onChange={handleChange} placeholder="Email" className="input input-bordered w-full" required />
+          <input name="username" value={form.username} onChange={handleChange} placeholder="Username" className="input input-bordered w-full" required readOnly />
+          <input name="email" value={form.email} onChange={handleChange} placeholder="Email" className="input input-bordered w-full" required readOnly />
           <textarea name="skills" value={form.skills} onChange={handleChange} placeholder="Skills (comma separated)" className="textarea textarea-bordered w-full" required />
+          <div className="text-sm text-gray-500">Pro tip: separate skills with commas. Skills are normalized to lowercase and duplicates removed.</div>
           <button className="btn btn-primary" disabled={loading}>{loading?"Submitting...":"Submit Application"}</button>
         </form>
       )}
