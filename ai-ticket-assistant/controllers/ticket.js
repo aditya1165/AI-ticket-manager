@@ -46,17 +46,20 @@ export const getTickets = async (req, res) => {
       tickets = await Ticket.find({})
         .populate("assignedTo", ["email", "_id"]) 
         .populate("createdBy", ["email", "_id"]) 
-        .sort({ updatedAt: -1 });
+        .sort({ updatedAt: -1 })
+        .lean();
     } else if (user.role === "moderator") {
       tickets = await Ticket.find({ assignedTo: user._id })
         .populate("assignedTo", ["email", "_id"]) 
         .populate("createdBy", ["email", "_id"]) 
-        .sort({ updatedAt: -1 });
+        .sort({ updatedAt: -1 })
+        .lean();
     } else {      
       tickets = await Ticket.find({ createdBy: user._id })
         .select("title description status createdAt updatedAt priority assignedTo deadline helpfulNotes relatedSkills")
         .populate("assignedTo", ["email", "_id"]) 
-        .sort({ updatedAt: -1 });
+        .sort({ updatedAt: -1 })
+        .lean();
     }
     return res.status(200).json(tickets);
   } catch (error) {
@@ -73,14 +76,16 @@ export const getTicket = async (req, res) => {
     if (user.role !== "user") {
       ticket = await Ticket.findById(req.params.id)
         .populate("assignedTo", ["email", "_id"]) 
-        .populate("createdBy", ["email", "_id"]);
+        .populate("createdBy", ["email", "_id"])
+        .lean();
     } else {
       ticket = await Ticket.findOne({
         createdBy: user._id,
         _id: req.params.id,
       })
       .select("title description status createdAt updatedAt priority deadline helpfulNotes relatedSkills assignedTo")
-      .populate("assignedTo", ["email", "_id"]);
+      .populate("assignedTo", ["email", "_id"])
+      .lean();
     }
     
     if (!ticket) {

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import Navbar from "../components/navbar";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -6,11 +7,13 @@ export default function AdminPanel() {
   const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({ role: "", skills: "" });
   const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const token = localStorage.getItem("token");
 
   const fetchUsers = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/auth/users`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -25,6 +28,8 @@ export default function AdminPanel() {
       }
     } catch (err) {
       console.error("Error fetching users", err);
+    } finally {
+      setLoading(false);
     }
   }, [token]);
 
@@ -83,83 +88,157 @@ export default function AdminPanel() {
     );
   };
 
+  const getInitials = (email) => {
+    if (!email) return "U";
+    const parts = email.split("@")[0].split(/[._-]/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return email.slice(0, 2).toUpperCase();
+  };
+
+  const getAvatarColor = (email) => {
+    if (!email) return "#6366f1";
+    const hash = email.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const colors = ["#6366f1", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
+    return colors[hash % colors.length];
+  };
+
   return (
-    <div className="max-w-4xl mx-auto mt-10">
-      <h1 className="text-2xl font-bold mb-6">Admin Panel - Manage Users</h1>
-      <input
-        type="text"
-        className="input input-bordered w-full mb-6"
-        placeholder="Search by email"
-        value={searchQuery}
-        onChange={handleSearch}
-      />
-      {filteredUsers.map((user) => (
-        <div
-          key={user._id}
-          className="bg-base-100 shadow rounded p-4 mb-4 border"
-        >
-          <p>
-            <strong>Email:</strong> {user.email}
-          </p>
-          <p>
-            <strong>Current Role:</strong> {user.role}
-          </p>
-          <p>
-            <strong>Skills:</strong>{" "}
-            {user.skills && user.skills.length > 0
-              ? user.skills.join(", ")
-              : "N/A"}
-          </p>
+    <>
+      <Navbar />
+      <div className="min-h-screen bg-slate-900">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-white mb-2">User Management</h1>
+            <p className="text-slate-400 text-sm">Manage roles and skills for all users</p>
+          </div>
 
-          {editingUser === user.email ? (
-            <div className="mt-4 space-y-2">
-              <select
-                className="select select-bordered w-full"
-                value={formData.role}
-                onChange={(e) =>
-                  setFormData({ ...formData, role: e.target.value })
-                }
-              >
-                <option value="user">User</option>
-                <option value="moderator">Moderator</option>
-                <option value="admin">Admin</option>
-              </select>
+          <div className="mb-6">
+            <input
+              type="text"
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              placeholder="Search by email..."
+              value={searchQuery}
+              onChange={handleSearch}
+            />
+          </div>
 
-              <input
-                type="text"
-                placeholder="Comma-separated skills"
-                className="input input-bordered w-full"
-                value={formData.skills}
-                onChange={(e) =>
-                  setFormData({ ...formData, skills: e.target.value })
-                }
-              />
-
-              <div className="flex gap-2">
-                <button
-                  className="btn btn-success btn-sm"
-                  onClick={handleUpdate}
-                >
-                  Save
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setEditingUser(null)}
-                >
-                  Cancel
-                </button>
-              </div>
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="card-elevated p-6">
+                  <div className="skeleton h-6 w-48 mb-3"></div>
+                  <div className="skeleton h-4 w-32 mb-2"></div>
+                  <div className="skeleton h-4 w-64"></div>
+                </div>
+              ))}
             </div>
           ) : (
-            <button
-              className="btn btn-primary btn-sm mt-2"
-              onClick={() => handleEditClick(user)}
-            >
-              Edit
-            </button>
+            <div className="space-y-4">
+              {filteredUsers.map((user) => (
+                <div
+                  key={user._id}
+                  className="card-elevated p-6"
+                >
+                  <div className="flex items-start gap-4">
+                    <div 
+                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
+                      style={{ background: getAvatarColor(user.email) }}
+                    >
+                      {getInitials(user.email)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-white">{user.email}</h3>
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${
+                          user.role === 'admin' ? 'bg-purple-500/20 text-purple-400' :
+                          user.role === 'moderator' ? 'bg-blue-500/20 text-blue-400' :
+                          'bg-slate-700 text-slate-300'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </div>
+                      <div className="mb-3">
+                        <span className="text-sm text-slate-400">Skills: </span>
+                        {user.skills && user.skills.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {user.skills.map((skill, idx) => (
+                              <span key={idx} className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded text-xs">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-500">No skills assigned</span>
+                        )}
+                      </div>
+
+                      {editingUser === user.email ? (
+                        <div className="space-y-3 mt-4 pt-4 border-t border-slate-700">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">Role</label>
+                            <select
+                              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                              value={formData.role}
+                              onChange={(e) =>
+                                setFormData({ ...formData, role: e.target.value })
+                              }
+                            >
+                              <option value="user">User</option>
+                              <option value="moderator">Moderator</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">Skills (comma-separated)</label>
+                            <input
+                              type="text"
+                              placeholder="e.g., React, Node.js, MongoDB"
+                              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                              value={formData.skills}
+                              onChange={(e) =>
+                                setFormData({ ...formData, skills: e.target.value })
+                              }
+                            />
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-all"
+                              onClick={handleUpdate}
+                            >
+                              Save Changes
+                            </button>
+                            <button
+                              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium transition-all"
+                              onClick={() => setEditingUser(null)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          className="mt-3 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-all"
+                          onClick={() => handleEditClick(user)}
+                        >
+                          Edit User
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {filteredUsers.length === 0 && (
+                <div className="text-center py-12">
+                  <p className="text-slate-400">No users found matching "{searchQuery}"</p>
+                </div>
+              )}
+            </div>
           )}
         </div>
-      ))}
-    </div>
+      </div>
+    </>
   );
 }
+

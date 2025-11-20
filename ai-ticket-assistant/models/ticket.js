@@ -31,4 +31,9 @@ const ticketSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for query optimization
+ticketSchema.index({ createdBy: 1, updatedAt: -1 });
+ticketSchema.index({ assignedTo: 1, updatedAt: -1 });
+ticketSchema.index({ status: 1, updatedAt: -1 });
+
 export default mongoose.model("Ticket", ticketSchema);

@@ -9,4 +9,8 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
+// Indexes for query optimization
+userSchema.index({ email: 1 });
+userSchema.index({ role: 1 });
+
 export default mongoose.model("User", userSchema);

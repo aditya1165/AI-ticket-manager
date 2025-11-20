@@ -1,6 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
+import compression from "compression";
 import { serve } from "inngest/express";
 import userRoutes from "./routes/user.js";
 import ticketRoutes from "./routes/ticket.js";
@@ -15,6 +16,8 @@ dotenv.config();
 const PORT = process.env.PORT || 3000;
 const app = express();
 
+// Response compression for performance
+app.use(compression());
 app.use(cors());
 app.use(express.json());
 // Optional: serve built frontend and fallback to index.html for client-side routes

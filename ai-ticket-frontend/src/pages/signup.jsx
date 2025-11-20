@@ -68,63 +68,82 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{background: "linear-gradient(135deg, #a5b4fc 0%, #6366f1 100%)"}}>
-      {/* Decorative shapes */}
-      <div className="absolute top-0 left-0 w-72 h-72 bg-indigo-300 rounded-full opacity-30 blur-2xl animate-pulse" style={{zIndex:0}}></div>
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-200 rounded-full opacity-30 blur-2xl animate-pulse" style={{zIndex:0}}></div>
-      <div className="card w-full max-w-sm shadow-2xl bg-base-100 p-6 rounded-xl relative" style={{zIndex:1}}>
-        <h1 className="text-3xl font-bold text-center mb-2 text-indigo-700">Ticket.io</h1>
-        <p className="text-center text-gray-500 mb-6">AI-powered Ticket Management System</p>
-        <form onSubmit={handleSignup} className="card-body">
-          <h2 className="card-title justify-center mb-4">Sign Up</h2>
-          <input
-            type="text"
-            name="username"
-            placeholder="Username"
-            className="input input-bordered mb-1"
-            value={form.username}
-            onChange={handleChange}
-            required
-            autoComplete="username"
-          />
-          {errors.username && <div className="text-red-500 text-xs mb-2">{errors.username}</div>}
-          <input
-            type="email"
-            name="email"
-            placeholder="Email"
-            className="input input-bordered mb-1"
-            value={form.email}
-            onChange={handleChange}
-            required
-            autoComplete="email"
-          />
-          {errors.email && <div className="text-red-500 text-xs mb-2">{errors.email}</div>}
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            className="input input-bordered mb-1"
-            value={form.password}
-            onChange={handleChange}
-            required
-            autoComplete="new-password"
-          />
-          {errors.password && <div className="text-red-500 text-xs mb-2">{errors.password}</div>}
-          {errors.form && <div className="text-red-500 text-xs mb-2">{errors.form}</div>}
-          <button
-            type="submit"
-            className="btn btn-primary w-full mb-2"
-            disabled={loading}
-          >
-            {loading ? "Signing up..." : "Sign Up"}
-          </button>
-          <div className="text-center mt-2">
-            <span className="text-gray-600">Already have an account? </span>
-            <Link to="/login" className="link link-primary font-semibold">
-              Click here to login
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-slate-900">
+      <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl"></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"></div>
+      
+      <div className="w-full max-w-md mx-4 relative z-10">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 mb-4">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent mb-2">Ticket.io</h1>
+          <p className="text-slate-400">AI-powered support management</p>
+        </div>
+
+        <div className="card-elevated p-8">
+          <h2 className="text-2xl font-bold text-white mb-6">Create account</h2>
+          <form onSubmit={handleSignup} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Username</label>
+              <input
+                type="text"
+                name="username"
+                placeholder="Choose a username"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                value={form.username}
+                onChange={handleChange}
+                required
+                autoComplete="username"
+              />
+              {errors.username && <p className="text-red-400 text-xs mt-1">{errors.username}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+              <input
+                type="email"
+                name="email"
+                placeholder="Enter your email"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                value={form.email}
+                onChange={handleChange}
+                required
+                autoComplete="email"
+              />
+              {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+              <input
+                type="password"
+                name="password"
+                placeholder="Create a password (min. 6 characters)"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                value={form.password}
+                onChange={handleChange}
+                required
+                autoComplete="new-password"
+              />
+              {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
+            </div>
+            {errors.form && <div className="px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{errors.form}</div>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
+            >
+              {loading ? "Creating account..." : "Sign up"}
+            </button>
+          </form>
+          <div className="mt-6 text-center">
+            <span className="text-slate-400 text-sm">Already have an account? </span>
+            <Link to="/login" className="text-indigo-400 hover:text-indigo-300 font-medium text-sm transition-colors">
+              Sign in
             </Link>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

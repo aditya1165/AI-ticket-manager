@@ -103,7 +103,7 @@ export const getUsers = async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const users = await User.find().select("-password");
+    const users = await User.find().select("-password").lean();
     return res.json(users);
   } catch (error) {
     res.status(500).json({ error: "Update failed", details: error.message });

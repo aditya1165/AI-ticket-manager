@@ -2,27 +2,44 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Navbar from "../components/navbar";
 import EmptyState from "../components/empty-state";
- 
+
+// Skeleton loader component
+function TicketSkeleton() {
+  return (
+    <div className="card-elevated p-6 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="skeleton h-6 w-2/3"></div>
+        <div className="skeleton h-5 w-20"></div>
+      </div>
+      <div className="skeleton h-4 w-full"></div>
+      <div className="skeleton h-4 w-5/6"></div>
+      <div className="flex gap-2">
+        <div className="skeleton h-5 w-16"></div>
+        <div className="skeleton h-5 w-24"></div>
+      </div>
+    </div>
+  );
+}
 
 export default function Tickets() {
   const API_BASE = (import.meta.env.VITE_SERVER_URL ?? "").toString().trim();
   const [form, setForm] = useState({ title: "", description: "" });
   const [tickets, setTickets] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState(() => localStorage.getItem("ticketSortBy") || "updatedAt");
   const [sortOrder, setSortOrder] = useState(() => localStorage.getItem("ticketSortOrder") || "desc");
   const [showCreate, setShowCreate] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Current user
   const userStr = localStorage.getItem("user");
   const currentUser = userStr ? JSON.parse(userStr) : null;
-
   const token = localStorage.getItem("token");
 
   const fetchTickets = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await fetch(`${API_BASE}/tickets`, {
         headers: { Authorization: `Bearer ${token}` },
         method: "GET",
@@ -37,6 +54,8 @@ export default function Tickets() {
       setTickets(data);
     } catch (err) {
       console.error("Failed to fetch tickets:", err);
+    } finally {
+      setLoading(false);
     }
   }, [token, API_BASE]);
 
@@ -44,7 +63,6 @@ export default function Tickets() {
     fetchTickets();
   }, [fetchTickets]);
 
-  // Persist sort preferences
   useEffect(() => {
     localStorage.setItem("ticketSortBy", sortBy);
     localStorage.setItem("ticketSortOrder", sortOrder);
@@ -56,7 +74,7 @@ export default function Tickets() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
     try {
       const res = await fetch(`${API_BASE}/tickets`, {
         method: "POST",
@@ -71,7 +89,8 @@ export default function Tickets() {
 
       if (res.ok) {
         setForm({ title: "", description: "" });
-        fetchTickets(); // Refresh list
+        setShowCreate(false);
+        fetchTickets();
       } else {
         alert(data.message || "Ticket creation failed");
       }
@@ -79,7 +98,7 @@ export default function Tickets() {
       alert("Error creating ticket");
       console.error(err);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -100,7 +119,6 @@ export default function Tickets() {
         alert(data.message || "Failed to update status");
         return;
       }
-      // Update UI optimistically
       setTickets(prev => prev.map(t => (t._id === id ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t)));
     } catch (e) {
       console.error("Failed to update status", e);
@@ -110,7 +128,6 @@ export default function Tickets() {
     }
   };
 
-  // Dashboard summary
   const summary = useMemo(() => {
     const list = Array.isArray(tickets) ? tickets : [];
     const s = { total: list.length, todo: 0, inprog: 0, done: 0 };
@@ -122,7 +139,6 @@ export default function Tickets() {
     return s;
   }, [tickets]);
 
-  // Sorting and pagination logic
   const sortedTickets = useMemo(() => {
     const priorityRank = { Low: 1, Medium: 2, High: 3 };
     const arr = [...tickets];
@@ -130,246 +146,300 @@ export default function Tickets() {
       let aVal = a[sortBy] ?? a["updatedAt"] ?? a["createdAt"];
       let bVal = b[sortBy] ?? b["updatedAt"] ?? b["createdAt"];
 
-      // Priority special handling
       if (sortBy === "priority") {
         const aRank = priorityRank[aVal] ?? 0;
         const bRank = priorityRank[bVal] ?? 0;
         return sortOrder === "asc" ? aRank - bRank : bRank - aRank;
       }
 
-      // Date-like handling
       const aDate = typeof aVal === "string" && !isNaN(Date.parse(aVal)) ? Date.parse(aVal) : null;
       const bDate = typeof bVal === "string" && !isNaN(Date.parse(bVal)) ? Date.parse(bVal) : null;
       if (aDate !== null && bDate !== null) {
         return sortOrder === "asc" ? aDate - bDate : bDate - aDate;
       }
 
-      // Numeric handling
       if (typeof aVal === "number" && typeof bVal === "number") {
         return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
       }
 
-      // String handling
       if (typeof aVal === "string" && typeof bVal === "string") {
         return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
 
-      // Fallback
       return 0;
     });
     return arr;
   }, [tickets, sortBy, sortOrder]);
-  const ticketsPerPage = 5;
+
+  const ticketsPerPage = 10;
   const safeSorted = Array.isArray(sortedTickets) ? sortedTickets : [];
   const totalPages = Math.ceil(safeSorted.length / ticketsPerPage) || 0;
   const paginatedTickets = safeSorted.slice((page - 1) * ticketsPerPage, page * ticketsPerPage);
 
+  // Avatar helper
+  const getInitials = (email) => {
+    if (!email) return "?";
+    const parts = email.split("@")[0].split(/[._-]/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return email.slice(0, 2).toUpperCase();
+  };
+
+  const getAvatarColor = (email) => {
+    if (!email) return "#6366f1";
+    const hash = email.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const colors = ["#6366f1", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
+    return colors[hash % colors.length];
+  };
+
   return (
     <>
       <Navbar />
-      <div className="p-4 max-w-4xl mx-auto">
-        {/* Dashboard summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6">
-          <div className="stat bg-base-200 rounded">
-            <div className="stat-title">Total</div>
-            <div className="stat-value text-primary">{summary.total}</div>
-          </div>
-          <div className="stat bg-base-200 rounded">
-            <div className="stat-title">To-Do</div>
-            <div className="stat-value text-warning">{summary.todo}</div>
-          </div>
-          <div className="stat bg-base-200 rounded">
-            <div className="stat-title">In Progress</div>
-            <div className="stat-value text-info">{summary.inprog}</div>
-          </div>
-          <div className="stat bg-base-200 rounded">
-            <div className="stat-title">Completed</div>
-            <div className="stat-value text-success">{summary.done}</div>
-          </div>
-        </div>
-
-        {/* Create ticket toggle */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold">{currentUser?.role === 'admin' ? 'All Tickets' : currentUser?.role === 'moderator' ? 'Assigned to Me' : 'My Tickets'}</h2>
-          <button className="btn btn-primary" onClick={() => setShowCreate(v => !v)}>
-            <span className="mr-2">+</span> {showCreate ? 'Close' : 'Create New Ticket'}
-          </button>
-        </div>
-        {showCreate && (
-          <form onSubmit={handleSubmit} className="space-y-3 mb-8 bg-base-200 p-4 rounded">
-            <input
-              name="title"
-              value={form.title}
-              onChange={handleChange}
-              placeholder="Ticket Title"
-              className="input input-bordered w-full"
-              required
-            />
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              placeholder="Ticket Description"
-              className="textarea textarea-bordered w-full"
-              required
-            ></textarea>
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? "Submitting..." : "Submit Ticket"}
-            </button>
-          </form>
-        )}
-
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-2 gap-2">
-          <h2 className="text-xl font-semibold">All Tickets</h2>
-          <div className="flex flex-wrap gap-2 items-center md:justify-end">
-            <span className="text-sm">Sort by:</span>
-            <div className="join">
-              <button
-                type="button"
-                className={`btn btn-sm join-item ${sortBy === 'updatedAt' ? 'btn-active' : ''}`}
-                onClick={() => setSortBy('updatedAt')}
-              >
-                Updated
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm join-item ${sortBy === 'createdAt' ? 'btn-active' : ''}`}
-                onClick={() => setSortBy('createdAt')}
-              >
-                Created
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm join-item ${sortBy === 'priority' ? 'btn-active' : ''}`}
-                onClick={() => setSortBy('priority')}
-              >
-                Priority
-              </button>
+      <div className="min-h-screen bg-slate-900">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* KPI Dashboard */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="card-elevated p-5">
+              <div className="text-sm font-medium text-slate-400 mb-1">Total Tickets</div>
+              <div className="text-3xl font-bold text-indigo-400">{summary.total}</div>
             </div>
-            <div className="join">
-              <button
-                type="button"
-                className={`btn btn-sm join-item ${sortOrder === 'asc' ? 'btn-active' : ''}`}
-                title="Ascending"
-                onClick={() => setSortOrder('asc')}
-              >
-                ▲
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm join-item ${sortOrder === 'desc' ? 'btn-active' : ''}`}
-                title="Descending"
-                onClick={() => setSortOrder('desc')}
-              >
-                ▼
-              </button>
+            <div className="card-elevated p-5">
+              <div className="text-sm font-medium text-slate-400 mb-1">To-Do</div>
+              <div className="text-3xl font-bold text-yellow-400">{summary.todo}</div>
             </div>
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={() => { setSortBy('updatedAt'); setSortOrder('desc'); }}
-              title="Reset sorting"
+            <div className="card-elevated p-5">
+              <div className="text-sm font-medium text-slate-400 mb-1">In Progress</div>
+              <div className="text-3xl font-bold text-blue-400">{summary.inprog}</div>
+            </div>
+            <div className="card-elevated p-5">
+              <div className="text-sm font-medium text-slate-400 mb-1">Completed</div>
+              <div className="text-3xl font-bold text-green-400">{summary.done}</div>
+            </div>
+          </div>
+
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-white mb-1">
+                {currentUser?.role === 'admin' ? 'All Tickets' : currentUser?.role === 'moderator' ? 'Assigned to Me' : 'My Tickets'}
+              </h1>
+              <p className="text-slate-400 text-sm">Manage and track your support requests</p>
+            </div>
+            <button 
+              onClick={() => setShowCreate(v => !v)}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-all flex items-center gap-2"
             >
-              Reset
+              <span className="text-xl leading-none">+</span>
+              <span>{showCreate ? 'Cancel' : 'New Ticket'}</span>
             </button>
           </div>
-        </div>
 
-        <div className="space-y-3">
-          {Array.isArray(paginatedTickets) && paginatedTickets.map((ticket) => (
-            <Link
-              key={ticket._id}
-              className="card shadow-md p-4 bg-gray-800"
-              to={`/tickets/${ticket._id}`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="font-bold text-lg flex items-center gap-2">
-                  {ticket.status === 'Completed' && (
-                    <span className="text-green-400" title="Completed">✓</span>
-                  )}
-                  {ticket.title}
-                </h3>
-                <div className="flex items-center gap-2">
-                  <span className="badge badge-outline">{ticket.status}</span>
+          {/* Create form */}
+          {showCreate && (
+            <div className="card-elevated p-6 mb-8">
+              <h3 className="text-lg font-semibold text-white mb-4">Create New Ticket</h3>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Title</label>
+                  <input
+                    name="title"
+                    value={form.title}
+                    onChange={handleChange}
+                    placeholder="Brief description of the issue"
+                    className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    required
+                  />
                 </div>
-              </div>
-              {ticket.priority && (
-                <span className="badge badge-info mb-2">Priority: {ticket.priority}</span>
-              )}
-              {/* Show extra meta for admin/moderator */}
-              {currentUser && currentUser.role !== 'user' && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {ticket.createdBy?.email && (
-                    <span className="badge badge-ghost">Created By: {ticket.createdBy.email}</span>
-                  )}
-                  {ticket.assignedTo?.email && (
-                    <span className="badge badge-ghost">Assigned To: {ticket.assignedTo.email}</span>
-                  )}
-                  {ticket.deadline && (
-                    <span className="badge badge-ghost">Deadline: {new Date(ticket.deadline).toLocaleDateString()}</span>
-                  )}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
+                  <textarea
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    placeholder="Provide detailed information about the issue"
+                    rows="4"
+                    className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                    required
+                  ></textarea>
                 </div>
-              )}
-              <p className="text-sm mb-1">{ticket.description}</p>
-              <p className="text-sm text-gray-500 mb-0">
-                Created At: {new Date(ticket.createdAt).toLocaleString()}
-              </p>
-              {(currentUser && currentUser.role !== 'user' && ticket.updatedAt) && (
-                <p className="text-xs text-gray-400">Last Updated: {new Date(ticket.updatedAt).toLocaleString()}</p>
-              )}
-              {/* Inline status control (only for admin or assigned moderator) */}
-              {(currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator')) && (
-                <div className="mt-3">
-                  <label className="text-xs text-gray-400 mr-2">Update Status:</label>
-                  <select
-                    className="select select-bordered select-sm w-40"
-                    value={ticket.status}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onChange={(e) => handleStatusChange(ticket._id, e.target.value)}
-                    disabled={updatingId === ticket._id}
-                    aria-label="Update ticket status"
+                <div className="flex gap-3">
+                  <button 
+                    type="submit" 
+                    disabled={submitting}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
                   >
-                    <option>To-Do</option>
-                    <option>In Progress</option>
-                    <option>Completed</option>
-                  </select>
+                    {submitting ? "Creating..." : "Create Ticket"}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setShowCreate(false)}
+                    className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium transition-all"
+                  >
+                    Cancel
+                  </button>
                 </div>
-              )}
-            </Link>
-          ))}
-          {(Array.isArray(tickets) ? tickets.length : 0) === 0 && (
-            <EmptyState
-              title="No tickets yet"
-              message="You don't have any tickets. Create one to get started."
-              ctaText="Create a ticket"
-              onCta={() => setShowCreate(true)}
-            />
+              </form>
+            </div>
+          )}
+
+          {/* Sort controls */}
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div className="text-sm text-slate-400">
+              Showing {paginatedTickets.length} of {safeSorted.length} tickets
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm text-slate-400">Sort:</span>
+              <div className="inline-flex rounded-lg bg-slate-800 p-1">
+                <button
+                  onClick={() => setSortBy('updatedAt')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${sortBy === 'updatedAt' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Updated
+                </button>
+                <button
+                  onClick={() => setSortBy('createdAt')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${sortBy === 'createdAt' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Created
+                </button>
+                <button
+                  onClick={() => setSortBy('priority')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${sortBy === 'priority' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Priority
+                </button>
+              </div>
+              <div className="inline-flex rounded-lg bg-slate-800 p-1">
+                <button
+                  onClick={() => setSortOrder('asc')}
+                  title="Ascending"
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${sortOrder === 'asc' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={() => setSortOrder('desc')}
+                  title="Descending"
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${sortOrder === 'desc' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  ↓
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Tickets list */}
+          <div className="space-y-4">
+            {loading ? (
+              <>
+                <TicketSkeleton />
+                <TicketSkeleton />
+                <TicketSkeleton />
+              </>
+            ) : paginatedTickets.length > 0 ? (
+              paginatedTickets.map((ticket) => (
+                <Link
+                  key={ticket._id}
+                  to={`/tickets/${ticket._id}`}
+                  className="block card-elevated p-6 hover:shadow-xl"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-start gap-3 flex-1">
+                      {ticket.status === 'Completed' && (
+                        <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <path d="M5 13l4 4L19 7" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-semibold text-white mb-2 line-clamp-1">{ticket.title}</h3>
+                        <p className="text-sm text-slate-400 line-clamp-2 mb-3">{ticket.description}</p>
+                        
+                        {/* Meta row */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`status-badge ${ticket.status === 'To-Do' ? 'status-todo' : ticket.status === 'In Progress' ? 'status-inprogress' : 'status-completed'}`}>
+                            {ticket.status}
+                          </span>
+                          {ticket.priority && (
+                            <span className={`status-badge ${ticket.priority === 'High' ? 'priority-high' : ticket.priority === 'Medium' ? 'priority-medium' : 'priority-low'}`}>
+                              {ticket.priority}
+                            </span>
+                          )}
+                          {ticket.assignedTo?.email && (
+                            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-md">
+                              <div 
+                                className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-semibold"
+                                style={{ background: getAvatarColor(ticket.assignedTo.email) }}
+                              >
+                                {getInitials(ticket.assignedTo.email)}
+                              </div>
+                              <span className="text-xs text-slate-400">{ticket.assignedTo.email.split("@")[0]}</span>
+                            </div>
+                          )}
+                          <span className="text-xs text-slate-500">
+                            {new Date(ticket.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status update for admins/moderators */}
+                  {(currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator')) && (
+                    <div className="mt-4 pt-4 border-t border-slate-700/50">
+                      <div className="flex items-center gap-3">
+                        <label className="text-xs text-slate-400">Update Status:</label>
+                        <select
+                          value={ticket.status}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          onChange={(e) => { e.preventDefault(); handleStatusChange(ticket._id, e.target.value); }}
+                          disabled={updatingId === ticket._id}
+                          className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-md text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                        >
+                          <option>To-Do</option>
+                          <option>In Progress</option>
+                          <option>Completed</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </Link>
+              ))
+            ) : (
+              <EmptyState
+                title="No tickets yet"
+                message="Create your first ticket to get started with our support system."
+                ctaText="Create a ticket"
+                onCta={() => setShowCreate(true)}
+              />
+            )}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
+              >
+                Previous
+              </button>
+              <span className="px-4 py-2 text-slate-300 text-sm">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
+              >
+                Next
+              </button>
+            </div>
           )}
         </div>
-
-        {/* Pagination controls */}
-        {totalPages > 1 && (
-          <div className="flex justify-center items-center gap-2 mt-6">
-            <button
-              className="btn btn-sm btn-outline"
-              onClick={() => setPage(page - 1)}
-              disabled={page === 1}
-            >
-              Previous
-            </button>
-            <span className="text-sm">Page {page} of {totalPages}</span>
-            <button
-              className="btn btn-sm btn-outline"
-              onClick={() => setPage(page + 1)}
-              disabled={page === totalPages}
-            >
-              Next
-            </button>
-          </div>
-        )}
       </div>
     </>
   );
-  
-
 }
+

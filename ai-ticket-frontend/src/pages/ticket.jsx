@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
-import TicketComments from "../components/ticket-comments.jsx"; // Create this file/component
+import TicketComments from "../components/ticket-comments.jsx";
+import Navbar from "../components/navbar.jsx";
 
 export default function TicketDetailsPage() {
   const { id } = useParams();
@@ -12,9 +13,11 @@ export default function TicketDetailsPage() {
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const token = localStorage.getItem("token");
+
   useEffect(() => {
     const fetchTicket = async () => {
       try {
+        setLoading(true);
         const res = await fetch(
           `${API_BASE}/tickets/${id}`,
           {
@@ -67,98 +70,188 @@ export default function TicketDetailsPage() {
     }
   };
 
-  if (loading)
-    return <div className="text-center mt-10">Loading ticket details...</div>;
-  if (!ticket) return <div className="text-center mt-10">Ticket not found</div>;
+  const getInitials = (email) => {
+    if (!email) return "?";
+    const parts = email.split("@")[0].split(/[._-]/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return email.slice(0, 2).toUpperCase();
+  };
+
+  const getAvatarColor = (email) => {
+    if (!email) return "#6366f1";
+    const hash = email.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const colors = ["#6366f1", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
+    return colors[hash % colors.length];
+  };
+
+  if (loading) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-slate-900">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="card-elevated p-8 space-y-4">
+              <div className="skeleton h-8 w-2/3"></div>
+              <div className="skeleton h-4 w-full"></div>
+              <div className="skeleton h-4 w-5/6"></div>
+              <div className="skeleton h-20 w-full"></div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (!ticket) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">Ticket not found</h2>
+            <p className="text-slate-400">The ticket you're looking for doesn't exist.</p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
-    <div className="max-w-3xl mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Ticket Details</h2>
-
-      <div className="card bg-gray-800 shadow p-4 space-y-4">
-        <h3 className="text-xl font-semibold flex items-center gap-2">
-          {ticket.status === 'Completed' && (
-            <span className="text-green-400" title="Completed">✓</span>
-          )}
-          {ticket.title}
-        </h3>
-        <p>{ticket.description}</p>
-
-        {/* Conditionally render extended details */}
-        {ticket.status && (
-          <>
-            <div className="divider">Metadata</div>
-            <div className="flex items-center gap-2">
-              <p className="whitespace-nowrap">
-                <strong>Status:</strong> {ticket.status}
-              </p>
-              {(user && (user.role === 'admin' || (user.role === 'moderator' && ticket.assignedTo?._id === user._id))) && (
-                <select
-                  className="select select-bordered select-sm w-40 ml-2"
-                  value={ticket.status}
-                  onChange={(e) => handleStatusChange(e.target.value)}
-                  disabled={updating}
-                  aria-label="Update ticket status"
-                >
-                  <option>To-Do</option>
-                  <option>In Progress</option>
-                  <option>Completed</option>
-                </select>
-              )}
-            </div>
-            {ticket.priority && (
-              <p>
-                <strong>Priority:</strong> {ticket.priority}
-              </p>
-            )}
-
-            {ticket?.createdBy?.email && (
-              <p>
-                <strong>Created By:</strong> {ticket.createdBy.email}
-              </p>
-            )}
-
-            {ticket?.assignedTo?.email && (
-              <p>
-                <strong>Assigned To:</strong> {ticket.assignedTo.email}
-              </p>
-            )}
-
-            {(user && user.role !== 'user' && Array.isArray(ticket?.relatedSkills) && ticket.relatedSkills.length > 0) && (
-              <p>
-                <strong>Related Skills:</strong>{" "}
-                {ticket.relatedSkills.join(", ")}
-              </p>
-            )}
-
-            {(user && user.role !== 'user' && ticket?.helpfulNotes) && (
-              <div>
-                <strong>Helpful Notes:</strong>
-                <div className="prose max-w-none rounded mt-2">
-                  <ReactMarkdown>{ticket.helpfulNotes}</ReactMarkdown>
+    <>
+      <Navbar />
+      <div className="min-h-screen bg-slate-900">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="card-elevated p-8">
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-3">
+                  {ticket.status === 'Completed' && (
+                    <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M5 13l4 4L19 7" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  )}
+                  <h2 className="text-3xl font-bold text-white">{ticket.title}</h2>
                 </div>
-              </div>
-            )}
+                <p className="text-slate-300 leading-relaxed mb-6">{ticket.description}</p>
 
-            {ticket.createdAt && (
-              <p className="text-sm text-gray-500 mt-2">
-                Created At: {new Date(ticket.createdAt).toLocaleString()}
-              </p>
-            )}
-            {(user && user.role !== 'user' && ticket.updatedAt) && (
-              <p className="text-sm text-gray-500">
-                Updated At: {new Date(ticket.updatedAt).toLocaleString()}
-              </p>
-            )}
-            {ticket.deadline && (
-              <p className="text-sm text-gray-500">
-                Deadline: {new Date(ticket.deadline).toLocaleDateString()}
-              </p>
-            )}
-          </>
-        )}
+                {/* Meta badges */}
+                <div className="flex flex-wrap items-center gap-2 mb-6">
+                  <span className={`status-badge ${ticket.status === 'To-Do' ? 'status-todo' : ticket.status === 'In Progress' ? 'status-inprogress' : 'status-completed'}`}>
+                    {ticket.status}
+                  </span>
+                  {ticket.priority && (
+                    <span className={`status-badge ${ticket.priority === 'High' ? 'priority-high' : ticket.priority === 'Medium' ? 'priority-medium' : 'priority-low'}`}>
+                      Priority: {ticket.priority}
+                    </span>
+                  )}
+                </div>
+
+                {/* Metadata grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-6 border-b border-slate-700">
+                  {ticket?.createdBy?.email && (
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                        style={{ background: getAvatarColor(ticket.createdBy.email) }}
+                      >
+                        {getInitials(ticket.createdBy.email)}
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">Created By</div>
+                        <div className="text-sm font-medium text-white">{ticket.createdBy.email}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {ticket?.assignedTo?.email && (
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                        style={{ background: getAvatarColor(ticket.assignedTo.email) }}
+                      >
+                        {getInitials(ticket.assignedTo.email)}
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">Assigned To</div>
+                        <div className="text-sm font-medium text-white">{ticket.assignedTo.email}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {ticket.createdAt && (
+                    <div>
+                      <div className="text-xs text-slate-400 mb-1">Created</div>
+                      <div className="text-sm text-white">{new Date(ticket.createdAt).toLocaleString()}</div>
+                    </div>
+                  )}
+
+                  {(user && user.role !== 'user' && ticket.updatedAt) && (
+                    <div>
+                      <div className="text-xs text-slate-400 mb-1">Last Updated</div>
+                      <div className="text-sm text-white">{new Date(ticket.updatedAt).toLocaleString()}</div>
+                    </div>
+                  )}
+
+                  {ticket.deadline && (
+                    <div>
+                      <div className="text-xs text-slate-400 mb-1">Deadline</div>
+                      <div className="text-sm text-white">{new Date(ticket.deadline).toLocaleDateString()}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Skills & Notes for admin/moderator */}
+                {(user && user.role !== 'user') && (
+                  <div className="mt-6 space-y-4">
+                    {Array.isArray(ticket?.relatedSkills) && ticket.relatedSkills.length > 0 && (
+                      <div>
+                        <div className="text-sm font-medium text-slate-300 mb-2">Related Skills</div>
+                        <div className="flex flex-wrap gap-2">
+                          {ticket.relatedSkills.map((skill, idx) => (
+                            <span key={idx} className="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-md text-sm">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {ticket?.helpfulNotes && (
+                      <div>
+                        <div className="text-sm font-medium text-slate-300 mb-2">AI-Generated Notes</div>
+                        <div className="prose prose-invert prose-sm max-w-none p-4 bg-slate-800 rounded-lg">
+                          <ReactMarkdown>{ticket.helpfulNotes}</ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Status update for admin/moderator */}
+                {(user && (user.role === 'admin' || (user.role === 'moderator' && ticket.assignedTo?._id === user._id))) && (
+                  <div className="mt-6 pt-6 border-t border-slate-700">
+                    <label className="block text-sm font-medium text-slate-300 mb-3">Update Status</label>
+                    <select
+                      className="px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                      value={ticket.status}
+                      onChange={(e) => handleStatusChange(e.target.value)}
+                      disabled={updating}
+                    >
+                      <option>To-Do</option>
+                      <option>In Progress</option>
+                      <option>Completed</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <TicketComments ticket={ticket} user={user} />
+          </div>
+        </div>
       </div>
-      <TicketComments ticket={ticket} user={user} />
-    </div>
+    </>
   );
 }
