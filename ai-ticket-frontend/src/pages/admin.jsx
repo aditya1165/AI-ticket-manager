@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import Navbar from "../components/navbar";
+import StatusIndicator from "../components/status-indicator.jsx";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -141,10 +142,13 @@ export default function AdminPanel() {
                 >
                   <div className="flex items-start gap-4">
                     <div 
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
+                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0 relative"
                       style={{ background: getAvatarColor(user.email) }}
                     >
                       {getInitials(user.email)}
+                      <div className="absolute -bottom-0.5 -right-0.5">
+                        <StatusIndicator status={user.status || "offline"} size="md" />
+                      </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">

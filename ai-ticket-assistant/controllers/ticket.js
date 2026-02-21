@@ -4,6 +4,8 @@ import { inngest } from "../inngest/client.js";
 import Ticket from "../models/ticket.js";
 import User from "../models/user.js";
 import { sendMail } from "../utils/mailer.js";
+import { updateModeratorStats } from "../utils/intelligent-assignment.js";
+import { getOrSet, del, CACHE_TTL, CACHE_KEYS, delPattern } from "../utils/cache.js";
 
 export const createTicket = async (req, res) => {
   try {
@@ -19,51 +21,110 @@ export const createTicket = async (req, res) => {
       createdBy: req.user._id.toString(),
     });
 
-    await inngest.send({
-      name: "ticket/created",
-      data: {
-        ticketId: newTicket._id.toString(),
-        title,
-        description,
-        createdBy: req.user._id.toString(),
-      },
-    });
+    try {
+      await inngest.send({
+        name: "ticket/created",
+        data: {
+          ticketId: newTicket._id.toString(),
+          title,
+          description,
+          createdBy: req.user._id.toString(),
+        },
+      });
+    } catch (inngestErr) {
+      // Inngest event send failed
+    }
+
+    // Invalidate ticket caches
+    await delPattern('tickets:*');
+    await delPattern('counts:*');
+
     return res.status(201).json({
       message: "Ticket created and processing started",
       ticket: newTicket,
     });
   } catch (error) {
-    console.error("Error creating ticket", error.message);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
+
 export const getTickets = async (req, res) => {
   try {
     const user = req.user;
-    let tickets = [];
-    if (user.role === "admin") {
-      tickets = await Ticket.find({})
-        .populate("assignedTo", ["email", "_id"]) 
-        .populate("createdBy", ["email", "_id"]) 
-        .sort({ updatedAt: -1 })
-        .lean();
-    } else if (user.role === "moderator") {
-      tickets = await Ticket.find({ assignedTo: user._id })
-        .populate("assignedTo", ["email", "_id"]) 
-        .populate("createdBy", ["email", "_id"]) 
-        .sort({ updatedAt: -1 })
-        .lean();
-    } else {      
-      tickets = await Ticket.find({ createdBy: user._id })
-        .select("title description status createdAt updatedAt priority assignedTo deadline helpfulNotes relatedSkills")
-        .populate("assignedTo", ["email", "_id"]) 
-        .sort({ updatedAt: -1 })
-        .lean();
-    }
-    return res.status(200).json(tickets);
+    const { page = 1, limit = 10, status, priority, search } = req.query;
+
+    // Create cache key based on user role, filters, and pagination
+    const cacheKey = `tickets:list:${user.role}:${user._id}:p${page}:l${limit}:s${status || 'all'}:pr${priority || 'all'}:q${search || 'none'}`;
+
+    // Use cache-aside pattern
+    const cachedData = await getOrSet(
+      cacheKey,
+      async () => {
+        const query = {};
+
+        // 1. Role-based Access Control
+        if (user.role === "moderator") {
+          query.assignedTo = user._id;
+        } else if (user.role === "user") {
+          query.createdBy = user._id;
+        }
+        // Admin sees all tickets
+
+        // 2. Filters
+        if (status) query.status = status;
+        if (priority) query.priority = priority;
+
+        // 3. Search (if provided)
+        if (search) {
+          query.$or = [
+            { title: { $regex: search, $options: "i" } },
+            { description: { $regex: search, $options: "i" } },
+          ];
+        }
+
+        // 4. Pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const limitNum = parseInt(limit);
+
+        // 5. Build Projection & Population options
+        let populateOptions = [
+          { path: "assignedTo", select: "email username status" }, // Leaner selection
+          { path: "createdBy", select: "email username status" },
+        ];
+
+        // For users, maybe exclude sensitive fields if needed
+        let selectFields = ""; // Select all by default
+        if (user.role === "user") {
+          selectFields = "-comments -__v"; // Example: exclude heavy fields for list view
+        }
+
+        // 6. Execute Query (Parallel for performance)
+        const [tickets, total] = await Promise.all([
+          Ticket.find(query)
+            .select(selectFields)
+            .populate(populateOptions)
+            .sort({ updatedAt: -1 })
+            .skip(skip)
+            .limit(limitNum)
+            .lean(),
+          Ticket.countDocuments(query),
+        ]);
+
+        return {
+          tickets,
+          pagination: {
+            total,
+            page: parseInt(page),
+            pages: Math.ceil(total / limitNum),
+          },
+        };
+      },
+      CACHE_TTL.RECENT_TICKETS
+    );
+
+    return res.status(200).json(cachedData);
   } catch (error) {
-    console.error("Error fetching tickets", error.message);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
@@ -75,16 +136,24 @@ export const getTicket = async (req, res) => {
 
     if (user.role !== "user") {
       ticket = await Ticket.findById(req.params.id)
-        .populate("assignedTo", ["email", "_id"]) 
-        .populate("createdBy", ["email", "_id"])
+        .populate("assignedTo", ["email", "_id", "status"]) 
+        .populate("createdBy", ["email", "_id", "status"])
+        .populate({
+          path: "comments.author",
+          select: "email username status"
+        })
         .lean();
     } else {
       ticket = await Ticket.findOne({
         createdBy: user._id,
         _id: req.params.id,
       })
-      .select("title description status createdAt updatedAt priority deadline helpfulNotes relatedSkills assignedTo")
-      .populate("assignedTo", ["email", "_id"])
+      .select("title description status createdAt updatedAt priority deadline helpfulNotes relatedSkills assignedTo comments")
+      .populate("assignedTo", ["email", "_id", "status"])
+      .populate({
+        path: "comments.author",
+        select: "email username status"
+      })
       .lean();
     }
     
@@ -93,7 +162,6 @@ export const getTicket = async (req, res) => {
     }
     return res.status(200).json({ ticket });
   } catch (error) {
-    console.error("Error fetching ticket", error.message);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
@@ -101,23 +169,28 @@ export const getTicket = async (req, res) => {
 export const addComment = async (req, res) => {
   const { text } = req.body;
   const { id } = req.params;
-  const user = req.user;
+  const userId = req.user._id;
+  const userRole = req.user.role;
 
-  const ticket = await Ticket.findById(id).populate("assignedTo createdBy");
+  // Fetch full user data for email, username, and status
+  const fullUser = await User.findById(userId).select("email username status");
+  if (!fullUser) return res.status(404).json({ message: "User not found" });
+
+  const ticket = await Ticket.findById(id).populate("assignedTo", "email _id status").populate("createdBy", "email _id status");
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
   // Only admin or assigned moderator can initiate
   if (ticket.comments.length === 0) {
-    if (user.role === "admin" || (user.role === "moderator" && ticket.assignedTo && ticket.assignedTo.equals(user._id))) {
+    if (userRole === "admin" || (userRole === "moderator" && ticket.assignedTo && ticket.assignedTo.equals(userId))) {
       // allow
     } else {
       return res.status(403).json({ message: "Not allowed to initiate comment" });
     }
   } else {
     // User can reply, but not initiate
-    if (user.role === "user" && ticket.createdBy.equals(user._id)) {
+    if (userRole === "user" && ticket.createdBy.equals(userId)) {
       // allow
-    } else if (user.role === "admin" || (user.role === "moderator" && ticket.assignedTo && ticket.assignedTo.equals(user._id))) {
+    } else if (userRole === "admin" || (userRole === "moderator" && ticket.assignedTo && ticket.assignedTo.equals(userId))) {
       // allow
     } else {
       return res.status(403).json({ message: "Not allowed to comment" });
@@ -125,17 +198,30 @@ export const addComment = async (req, res) => {
   }
 
   ticket.comments.push({
-    author: user._id,
+    author: userId,
     text,
-    role: user.role,
+    role: userRole,
     createdAt: new Date()
   });
   await ticket.save();
 
+  // Emit real-time update to all clients viewing this ticket
+  if (req.io) {
+    req.io.to(`ticket_${id}`).emit("comment_added", {
+      ticketId: id,
+      comment: {
+        author: { _id: userId, email: fullUser.email, username: fullUser.username, status: fullUser.status },
+        text,
+        role: userRole,
+        createdAt: new Date()
+      }
+    });
+  }
+
   // Email notification logic
   try {
     // If admin/moderator replies, notify user
-    if ((user.role === "admin" || user.role === "moderator") && ticket.createdBy?.email) {
+    if ((userRole === "admin" || userRole === "moderator") && ticket.createdBy?.email) {
       await sendMail(
         ticket.createdBy.email,
         "New Comment on Your Ticket",
@@ -143,7 +229,7 @@ export const addComment = async (req, res) => {
       );
     }
     // If user replies, notify assigned moderator or admin
-    if (user.role === "user") {
+    if (userRole === "user") {
       if (ticket.assignedTo?.email) {
         await sendMail(
           ticket.assignedTo.email,
@@ -165,8 +251,11 @@ export const addComment = async (req, res) => {
       }
     }
   } catch (err) {
-    console.error("Error sending comment notification email:", err.message);
+    // Error sending comment notification email
   }
+
+  // Invalidate ticket caches
+  await delPattern('tickets:*');
 
   res.json({ comments: ticket.comments });
 };
@@ -176,7 +265,7 @@ export const getComments = async (req, res) => {
   const { id } = req.params;
   const ticket = await Ticket.findById(id).populate({
     path: "comments.author",
-    select: "username email role"
+    select: "username email status"
   });
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
   res.json({ comments: ticket.comments });
@@ -192,7 +281,7 @@ export const updateTicketStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status" });
     }
 
-    const ticket = await Ticket.findById(id).populate("assignedTo createdBy");
+    const ticket = await Ticket.findById(id).populate("assignedTo", "email _id status").populate("createdBy", "email _id status");
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
     const user = req.user;
@@ -206,11 +295,33 @@ export const updateTicketStatus = async (req, res) => {
       return res.status(403).json({ message: "Not allowed to update status" });
     }
 
+    const previousStatus = ticket.status;
     ticket.status = status;
     await ticket.save();
+
+    // Update moderator statistics if ticket is completed
+    if (status === "Completed" && previousStatus !== "Completed" && ticket.assignedTo) {
+      await updateModeratorStats(
+        ticket.assignedTo._id,
+        ticket.createdAt,
+        new Date()
+      );
+    }
+
+    // Emit real-time update to all clients viewing this ticket
+    if (req.io) {
+      req.io.to(`ticket_${id}`).emit("status_updated", {
+        ticketId: id,
+        status: status
+      });
+    }
+
+    // Invalidate ticket caches
+    await delPattern('tickets:*');
+    await delPattern('counts:*');
+
     return res.json({ message: "Status updated", ticket });
   } catch (err) {
-    console.error("Error updating status", err.message);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };

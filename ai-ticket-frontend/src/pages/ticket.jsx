@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import TicketComments from "../components/ticket-comments.jsx";
 import Navbar from "../components/navbar.jsx";
+import { useSocket } from "../contexts/SocketContext.jsx";
+import StatusIndicator from "../components/status-indicator.jsx";
 
 export default function TicketDetailsPage() {
   const { id } = useParams();
@@ -10,9 +12,76 @@ export default function TicketDetailsPage() {
   const [loading, setLoading] = useState(true);
   const API_BASE = (import.meta.env.VITE_SERVER_URL ?? "").toString().trim();
   const [updating, setUpdating] = useState(false);
+  const { socket, isConnected } = useSocket();
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const token = localStorage.getItem("token");
+
+  // Real-time socket listeners
+  useEffect(() => {
+    if (!socket || !id) return;
+
+    // Join the ticket room
+    socket.emit("join_ticket", id);
+
+    // Listen for new comments
+    const handleCommentAdded = (data) => {
+      if (data.ticketId === id) {
+        setTicket((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            comments: [...(prev.comments || []), data.comment]
+          };
+        });
+      }
+    };
+
+    // Listen for status updates
+    const handleStatusUpdated = (data) => {
+      if (data.ticketId === id) {
+        setTicket((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            status: data.status
+          };
+        });
+      }
+    };
+
+    // Listen for user status changes (for createdBy/assignedTo status indicators)
+    const handleUserStatusChanged = (data) => {
+      setTicket((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev };
+        
+        // Update createdBy status if it matches
+        if (updated.createdBy?._id === data.userId) {
+          updated.createdBy = { ...updated.createdBy, status: data.status };
+        }
+        
+        // Update assignedTo status if it matches
+        if (updated.assignedTo?._id === data.userId) {
+          updated.assignedTo = { ...updated.assignedTo, status: data.status };
+        }
+        
+        return updated;
+      });
+    };
+
+    socket.on("comment_added", handleCommentAdded);
+    socket.on("status_updated", handleStatusUpdated);
+    socket.on("user_status_changed", handleUserStatusChanged);
+
+    // Cleanup
+    return () => {
+      socket.emit("leave_ticket", id);
+      socket.off("comment_added", handleCommentAdded);
+      socket.off("status_updated", handleStatusUpdated);
+      socket.off("user_status_changed", handleUserStatusChanged);
+    };
+  }, [socket, id]);
 
   useEffect(() => {
     const fetchTicket = async () => {
@@ -90,6 +159,13 @@ export default function TicketDetailsPage() {
         <Navbar />
         <div className="min-h-screen bg-slate-900">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* Real-time connection indicator */}
+            {isConnected && (
+              <div className="mb-4 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2 text-green-400 text-sm">
+                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                Live updates active
+              </div>
+            )}
             <div className="card-elevated p-8 space-y-4">
               <div className="skeleton h-8 w-2/3"></div>
               <div className="skeleton h-4 w-full"></div>
@@ -120,8 +196,13 @@ export default function TicketDetailsPage() {
     <>
       <Navbar />
       <div className="min-h-screen bg-slate-900">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="card-elevated p-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">          {/* Real-time connection indicator */}
+          {isConnected && (
+            <div className="mb-4 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2 text-green-400 text-sm">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+              Live updates active
+            </div>
+          )}          <div className="card-elevated p-8">
             <div className="flex items-start justify-between mb-6">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
@@ -152,11 +233,18 @@ export default function TicketDetailsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-6 border-b border-slate-700">
                   {ticket?.createdBy?.email && (
                     <div className="flex items-center gap-3">
-                      <div 
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
-                        style={{ background: getAvatarColor(ticket.createdBy.email) }}
-                      >
-                        {getInitials(ticket.createdBy.email)}
+                      <div className="relative">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                          style={{ background: getAvatarColor(ticket.createdBy.email) }}
+                        >
+                          {getInitials(ticket.createdBy.email)}
+                        </div>
+                        {ticket.createdBy.status && (
+                          <div className="absolute -bottom-0.5 -right-0.5">
+                            <StatusIndicator status={ticket.createdBy.status} size="sm" />
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="text-xs text-slate-400">Created By</div>
@@ -167,11 +255,18 @@ export default function TicketDetailsPage() {
 
                   {ticket?.assignedTo?.email && (
                     <div className="flex items-center gap-3">
-                      <div 
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
-                        style={{ background: getAvatarColor(ticket.assignedTo.email) }}
-                      >
-                        {getInitials(ticket.assignedTo.email)}
+                      <div className="relative">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                          style={{ background: getAvatarColor(ticket.assignedTo.email) }}
+                        >
+                          {getInitials(ticket.assignedTo.email)}
+                        </div>
+                        {ticket.assignedTo.status && (
+                          <div className="absolute -bottom-0.5 -right-0.5">
+                            <StatusIndicator status={ticket.assignedTo.status} size="sm" />
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="text-xs text-slate-400">Assigned To</div>

@@ -10,10 +10,12 @@ import Signup from "./pages/signup.jsx";
 import Admin from "./pages/admin.jsx";
 import ApplyModerator from "./pages/apply-moderator.jsx";
 import ModRequestsPage from "./pages/mod-requests.jsx";
+import { SocketProvider } from "./contexts/SocketContext.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <HashRouter>
+    <SocketProvider>
+      <HashRouter>
       <Routes>
         <Route
           path="/"
@@ -73,5 +75,6 @@ createRoot(document.getElementById("root")).render(
         />
       </Routes>
     </HashRouter>
+    </SocketProvider>
   </StrictMode>
 );

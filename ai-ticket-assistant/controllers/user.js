@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 import { inngest } from "../inngest/client.js";
+import { del, CACHE_KEYS } from "../utils/cache.js";
 
 export const signup = async (req, res) => {
   const { username,email, password, skills = [], role = "user" } = req.body;
@@ -16,16 +17,22 @@ export const signup = async (req, res) => {
       email, 
       password: hashed, 
       skills,
-      role: userRole
+      role: userRole,
+      status: "online",
+      lastSeen: new Date()
     });
 
     //Fire inngest event
-    await inngest.send({
-      name: "user/signup",
-      data: {
-        email
-      },
-    });
+    try {
+      await inngest.send({
+        name: "user/signup",
+        data: {
+          email
+        },
+      });
+    } catch (e) {
+      // connecting to inngest failed
+    }
 
     const token = jwt.sign(
       { _id: user._id, role: user.role },
@@ -52,6 +59,11 @@ export const login = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    // Set user status to online on login
+    user.status = "online";
+    user.lastSeen = new Date();
+    await user.save();
 
     const token = jwt.sign(
       { _id: user._id, role: user.role },
@@ -91,6 +103,11 @@ export const updateUser = async (req, res) => {
       { email },
       { skills: skills.length ? skills : user.skills, role }
     );
+
+    // Invalidate moderator cache if role or skills changed
+    await del(CACHE_KEYS.moderatorsWithSkills());
+    await del(CACHE_KEYS.moderatorSkills(user._id));
+
     return res.json({ message: "User updated successfully" });
   } catch (error) {
     res.status(500).json({ error: "Update failed", details: error.message });
@@ -107,5 +124,42 @@ export const getUsers = async (req, res) => {
     return res.json(users);
   } catch (error) {
     res.status(500).json({ error: "Update failed", details: error.message });
+  }
+};
+// Update user status (online, offline, dnd)
+export const updateStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const allowedStatuses = ["online", "offline", "dnd"];
+    
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be one of: online, offline, dnd" });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    user.status = status;
+    user.lastSeen = new Date();
+    await user.save();
+
+    // Emit real-time status update via WebSocket
+    if (req.io) {
+      req.io.emit("user_status_changed", {
+        userId: user._id,
+        status: user.status,
+        lastSeen: user.lastSeen
+      });
+    }
+
+    return res.json({ 
+      message: "Status updated successfully", 
+      status: user.status,
+      lastSeen: user.lastSeen
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to update status", details: error.message });
   }
 };

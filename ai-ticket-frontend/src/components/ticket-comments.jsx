@@ -1,13 +1,46 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import StatusIndicator from "./status-indicator";
+import { useSocket } from "../contexts/SocketContext";
 
-export default function TicketComments({ ticket, user }) {
+export default function TicketComments({ ticket, user, onCommentAdded }) {
   const { id } = useParams();
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const API_BASE = (import.meta.env.VITE_SERVER_URL ?? "").toString().trim();
+  const { socket } = useSocket();
 
+  // Listen for user status changes to update comment avatars in real-time
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleUserStatusChanged = (data) => {
+      setComments((prevComments) => 
+        prevComments.map((comment) => {
+          if (comment.author?._id === data.userId) {
+            return {
+              ...comment,
+              author: { ...comment.author, status: data.status }
+            };
+          }
+          return comment;
+        })
+      );
+    };
+
+    socket.on("user_status_changed", handleUserStatusChanged);
+    return () => socket.off("user_status_changed", handleUserStatusChanged);
+  }, [socket]);
+
+  // Sync with parent ticket.comments (for real-time updates)
+  useEffect(() => {
+    if (ticket?.comments) {
+      setComments(ticket.comments);
+    }
+  }, [ticket?.comments]);
+
+  // Initial fetch
   useEffect(() => {
     const fetchComments = async () => {
       const token = localStorage.getItem("token");
@@ -18,8 +51,10 @@ export default function TicketComments({ ticket, user }) {
       const data = ct.includes("application/json") ? await res.json() : { comments: [] };
       setComments(data.comments || []);
     };
-    fetchComments();
-  }, [id, API_BASE]);
+    if (!ticket?.comments || ticket.comments.length === 0) {
+      fetchComments();
+    }
+  }, [id, API_BASE, ticket?.comments]);
 
   const safeUser = user || {};
   const safeTicket = ticket || {};
@@ -52,14 +87,24 @@ export default function TicketComments({ ticket, user }) {
     setLoading(false);
   };
 
-  const getInitials = (role) => {
-    return role ? role[0].toUpperCase() : "U";
+  const getInitials = (email) => {
+    if (!email) return "?";
+    const parts = email.split("@")[0].split(/[._-]/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return email.slice(0, 2).toUpperCase();
   };
 
-  const getRoleColor = (role) => {
-    if (role === "admin") return "#8b5cf6";
-    if (role === "moderator") return "#3b82f6";
-    return "#64748b";
+  const getAvatarColor = (email) => {
+    if (!email) return "#6366f1";
+    const hash = email.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const colors = ["#6366f1", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
+    return colors[hash % colors.length];
+  };
+
+  const getUserDisplayName = (comment) => {
+    if (comment.author?.username) return comment.author.username;
+    if (comment.author?.email) return comment.author.email.split("@")[0];
+    return comment.role || "Unknown";
   };
 
   return (
@@ -73,18 +118,28 @@ export default function TicketComments({ ticket, user }) {
       
       <div className="space-y-4 mb-6">
         {comments.map((c, idx) => {
-          const isCurrentUser = c.role === user?.role;
+          const isCurrentUser = c.author?._id === user?._id;
+          const userEmail = c.author?.email || "";
+          const displayName = getUserDisplayName(c);
+          
           return (
             <div
               key={idx}
               className={`flex ${isCurrentUser ? "justify-end" : "justify-start"}`}
             >
               <div className={`flex gap-3 max-w-lg ${isCurrentUser ? "flex-row-reverse" : "flex-row"}`}>
-                <div 
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                  style={{ background: getRoleColor(c.role) }}
-                >
-                  {getInitials(c.role)}
+                <div className="relative flex-shrink-0 w-8 h-8">
+                  <div 
+                    className="w-full h-full rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                    style={{ background: getAvatarColor(userEmail) }}
+                  >
+                    {getInitials(userEmail)}
+                  </div>
+                  {c.author?.status && (
+                    <div className="absolute -bottom-0.5 -right-0.5">
+                      <StatusIndicator status={c.author.status} size="sm" />
+                    </div>
+                  )}
                 </div>
                 <div className={`flex flex-col ${isCurrentUser ? "items-end" : "items-start"}`}>
                   <div className={`px-4 py-3 rounded-2xl ${
@@ -94,7 +149,14 @@ export default function TicketComments({ ticket, user }) {
                       ? "bg-blue-500/20 text-blue-100"
                       : "bg-slate-800 text-slate-100"
                   } ${isCurrentUser ? "rounded-tr-sm" : "rounded-tl-sm"}`}>
-                    <div className="text-xs font-semibold mb-1 capitalize opacity-75">{c.role}</div>
+                    <div className="text-xs font-semibold mb-1 opacity-75">
+                      {displayName}
+                      {c.role && (
+                        <span className="ml-1.5 px-1.5 py-0.5 bg-black/20 rounded text-[10px] capitalize">
+                          {c.role}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm leading-relaxed">{c.text}</p>
                   </div>
                   <span className="text-xs text-slate-500 mt-1 px-2">

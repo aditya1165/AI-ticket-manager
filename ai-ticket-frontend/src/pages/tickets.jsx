@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Navbar from "../components/navbar";
 import EmptyState from "../components/empty-state";
+import StatusIndicator from "../components/status-indicator";
+import { useSocket } from "../contexts/SocketContext";
 
 // Skeleton loader component
 function TicketSkeleton() {
@@ -27,6 +29,8 @@ export default function Tickets() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalTickets, setTotalTickets] = useState(0);
   const [sortBy, setSortBy] = useState(() => localStorage.getItem("ticketSortBy") || "updatedAt");
   const [sortOrder, setSortOrder] = useState(() => localStorage.getItem("ticketSortOrder") || "desc");
   const [showCreate, setShowCreate] = useState(false);
@@ -36,11 +40,34 @@ export default function Tickets() {
   const userStr = localStorage.getItem("user");
   const currentUser = userStr ? JSON.parse(userStr) : null;
   const token = localStorage.getItem("token");
+  const { socket } = useSocket();
+
+  // Listen for user status changes to update assignedTo status indicators in real-time
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleUserStatusChanged = (data) => {
+      setTickets((prevTickets) => 
+        prevTickets.map((ticket) => {
+          if (ticket.assignedTo?._id === data.userId) {
+            return {
+              ...ticket,
+              assignedTo: { ...ticket.assignedTo, status: data.status }
+            };
+          }
+          return ticket;
+        })
+      );
+    };
+
+    socket.on("user_status_changed", handleUserStatusChanged);
+    return () => socket.off("user_status_changed", handleUserStatusChanged);
+  }, [socket]);
 
   const fetchTickets = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/tickets`, {
+      const res = await fetch(`${API_BASE}/tickets?page=${page}&limit=10`, {
         headers: { Authorization: `Bearer ${token}` },
         method: "GET",
       });
@@ -50,14 +77,21 @@ export default function Tickets() {
         throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 180)}`);
       }
       let data = await res.json();
-      data = Array.isArray(data) ? data : [];
-      setTickets(data);
+      
+      if (data.tickets) {
+        setTickets(data.tickets);
+        setTotalPages(data.pagination.pages);
+        setTotalTickets(data.pagination.total);
+      } else {
+        setTickets([]);
+        setTotalTickets(0);
+      }
     } catch (err) {
       console.error("Failed to fetch tickets:", err);
     } finally {
       setLoading(false);
     }
-  }, [token, API_BASE]);
+  }, [token, API_BASE, page]);
 
   useEffect(() => {
     fetchTickets();
@@ -140,8 +174,17 @@ export default function Tickets() {
   }, [tickets]);
 
   const sortedTickets = useMemo(() => {
+    // Only sort if we have tickets
+    if (!tickets || tickets.length === 0) return [];
+    
+    // Priority mapping
     const priorityRank = { Low: 1, Medium: 2, High: 3 };
+
     const arr = [...tickets];
+    
+    // If no sort specified, return as-is (backend sorted)
+    if (!sortBy) return arr;
+
     arr.sort((a, b) => {
       let aVal = a[sortBy] ?? a["updatedAt"] ?? a["createdAt"];
       let bVal = b[sortBy] ?? b["updatedAt"] ?? b["createdAt"];
@@ -157,25 +200,15 @@ export default function Tickets() {
       if (aDate !== null && bDate !== null) {
         return sortOrder === "asc" ? aDate - bDate : bDate - aDate;
       }
-
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
-      }
-
-      if (typeof aVal === "string" && typeof bVal === "string") {
-        return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
-
+      
       return 0;
     });
     return arr;
   }, [tickets, sortBy, sortOrder]);
 
-  const ticketsPerPage = 10;
   const safeSorted = Array.isArray(sortedTickets) ? sortedTickets : [];
-  const totalPages = Math.ceil(safeSorted.length / ticketsPerPage) || 0;
-  const paginatedTickets = safeSorted.slice((page - 1) * ticketsPerPage, page * ticketsPerPage);
-
+  // Removed paginatedTickets slice since safeSorted contains only current page tickets
+  
   // Avatar helper
   const getInitials = (email) => {
     if (!email) return "?";
@@ -284,7 +317,7 @@ export default function Tickets() {
           {/* Sort controls */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div className="text-sm text-slate-400">
-              Showing {paginatedTickets.length} of {safeSorted.length} tickets
+              Showing {safeSorted.length} of {totalTickets} tickets
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm text-slate-400">Sort:</span>
@@ -335,8 +368,8 @@ export default function Tickets() {
                 <TicketSkeleton />
                 <TicketSkeleton />
               </>
-            ) : paginatedTickets.length > 0 ? (
-              paginatedTickets.map((ticket) => (
+            ) : safeSorted.length > 0 ? (
+              safeSorted.map((ticket) => (
                 <Link
                   key={ticket._id}
                   to={`/tickets/${ticket._id}`}
@@ -367,11 +400,18 @@ export default function Tickets() {
                           )}
                           {ticket.assignedTo?.email && (
                             <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800 rounded-md">
-                              <div 
-                                className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-semibold"
-                                style={{ background: getAvatarColor(ticket.assignedTo.email) }}
-                              >
-                                {getInitials(ticket.assignedTo.email)}
+                              <div className="relative">
+                                <div 
+                                  className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-semibold"
+                                  style={{ background: getAvatarColor(ticket.assignedTo.email) }}
+                                >
+                                  {getInitials(ticket.assignedTo.email)}
+                                </div>
+                                {ticket.assignedTo.status && (
+                                  <div className="absolute -bottom-0.5 -right-0.5">
+                                    <StatusIndicator status={ticket.assignedTo.status} size="xs" />
+                                  </div>
+                                )}
                               </div>
                               <span className="text-xs text-slate-400">{ticket.assignedTo.email.split("@")[0]}</span>
                             </div>
@@ -426,11 +466,11 @@ export default function Tickets() {
                 Previous
               </button>
               <span className="px-4 py-2 text-slate-300 text-sm">
-                Page {page} of {totalPages}
+                Page {page} of {totalPages || 1}
               </span>
               <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
+                onClick={() => setPage(p => Math.min(totalPages || 1, p + 1))}
+                disabled={page >= totalPages}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
               >
                 Next

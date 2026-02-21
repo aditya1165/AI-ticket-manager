@@ -64,13 +64,11 @@ export const sendMail = async (to, subject, text, html) => {
     if (!res.ok) {
       const body = await res.text();
       const err = new Error(`SendGrid API error ${res.status}: ${body}`);
-      console.error(err.message);
       throw err;
     }
 
     return { provider: "sendgrid", status: res.status };
   } catch (err) {
-    console.error("❌ SendGrid send error:", err && err.message ? err.message : err);
     throw err;
   }
 };

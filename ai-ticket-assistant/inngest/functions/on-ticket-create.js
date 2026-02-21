@@ -4,6 +4,7 @@ import User from "../../models/user.js";
 import { NonRetriableError } from "inngest";
 import { sendMail } from "../../utils/mailer.js";
 import analyzeTicket from "../../utils/ai.js";
+import { findBestModerator } from "../../utils/intelligent-assignment.js";
 
 export const onTicketCreated = inngest.createFunction(
   { id: "on-ticket-created", retries: 2 },
@@ -44,24 +45,24 @@ export const onTicketCreated = inngest.createFunction(
       });
 
       const moderator = await step.run("assign-moderator", async () => {
-        let user = await User.findOne({
-          role: "moderator",
-          skills: {
-            $elemMatch: {
-              $regex: relatedskills.join("|"),
-              $options: "i",
-            },
-          },
-        });
-        if (!user) {
-          user = await User.findOne({
-            role: "admin",
+        // Use intelligent load balancing algorithm
+        const bestModerator = await findBestModerator(relatedskills);
+        
+        if (bestModerator) {
+          // Update ticket with assigned moderator
+          await Ticket.findByIdAndUpdate(ticket._id, {
+            assignedTo: bestModerator._id,
           });
+
+          // Update moderator's last assigned timestamp for round-robin
+          await User.findByIdAndUpdate(bestModerator._id, {
+            lastAssignedAt: new Date()
+          });          
+          return bestModerator;
+        } else {
+          console.warn("⚠️ No moderator found for assignment");
+          return null;
         }
-        await Ticket.findByIdAndUpdate(ticket._id, {
-          assignedTo: user?._id || null,
-        });
-        return user;
       });
 
       await step.run("send-email-notification", async () => {

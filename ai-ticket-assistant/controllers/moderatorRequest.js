@@ -1,6 +1,7 @@
 import ModeratorRequest from "../models/moderatorRequest.js";
 import User from "../models/user.js";
 import { sendMail } from "../utils/mailer.js";
+import { del, CACHE_KEYS } from "../utils/cache.js";
 
 export const createRequest = async (req, res) => {
   try {
@@ -32,7 +33,7 @@ export const createRequest = async (req, res) => {
     try {
       await sendMail(email, "Moderator request submitted", `Your request to become a moderator has been received and is pending review.`);
     } catch (e) {
-      console.error("Failed to send applicant notification", e.message);
+      // Email notification failed
     }
 
     // notify first available moderator (async best-effort)
@@ -42,12 +43,11 @@ export const createRequest = async (req, res) => {
         await sendMail(moderator.email, "New moderator application", `A new moderator application has been submitted by ${username} (${email}). Please review in the admin panel.`);
       }
     } catch (e) {
-      console.error("Failed to notify reviewer", e.message);
+      // Reviewer notification failed
     }
 
     return res.status(201).json({ message: "Request created", request: reqDoc });
   } catch (err) {
-    console.error(err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -65,7 +65,6 @@ export const getMyRequest = async (req, res) => {
     }
     return res.json({ request: reqDoc || null, cooldownHours });
   } catch (err) {
-    console.error(err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -77,7 +76,6 @@ export const listRequests = async (req, res) => {
     const requests = await ModeratorRequest.find({ status: "pending" }).populate("applicant", ["username", "email", "skills"]).sort({ createdAt: -1 });
     return res.json({ requests });
   } catch (err) {
-    console.error(err);
     return res.status(500).json({ message: "Server error" });
   }
 };
@@ -105,6 +103,10 @@ export const decideRequest = async (req, res) => {
         user.role = "moderator";
         user.skills = Array.from(new Set([...(user.skills || []), ...(reqDoc.skills || [])]));
         await user.save();
+
+        // Invalidate moderator cache when new moderator is added
+        await del(CACHE_KEYS.moderatorsWithSkills());
+        await del(CACHE_KEYS.moderatorSkills(user._id));
       }
     }
 
@@ -112,12 +114,11 @@ export const decideRequest = async (req, res) => {
     try {
       await sendMail(reqDoc.email, `Moderator request ${reqDoc.status}`, `Your moderator request has been ${reqDoc.status}.`);
     } catch (e) {
-      console.error("Failed to notify applicant", e.message);
+      // Email notification failed
     }
 
     return res.json({ message: "Request processed", request: reqDoc });
   } catch (err) {
-    console.error(err);
     return res.status(500).json({ message: "Server error" });
   }
 };

@@ -1,15 +1,79 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import StatusIndicator from "./status-indicator.jsx";
+import { useSocket } from "../contexts/SocketContext.jsx";
 
 export default function Navbar() {
   const token = localStorage.getItem("token");
   let user = localStorage.getItem("user");
   if (user) user = JSON.parse(user);
   const navigate = useNavigate();
+  const [userStatus, setUserStatus] = useState(user?.status || "online");
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const menuRef = useRef(null);
+  const { socket } = useSocket();
+  const API_BASE = (import.meta.env.VITE_SERVER_URL ?? "").toString().trim();
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowStatusMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Listen for real-time status updates from other sessions
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleStatusChange = (data) => {
+      if (data.userId === user?._id) {
+        setUserStatus(data.status);
+        // Update localStorage
+        const updatedUser = { ...user, status: data.status };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      }
+    };
+
+    socket.on("user_status_changed", handleStatusChange);
+    return () => socket.off("user_status_changed", handleStatusChange);
+  }, [socket, user]);
+
+  const updateStatus = async (newStatus) => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      if (res.ok) {
+        await res.json();
+        setUserStatus(newStatus);
+        setShowStatusMenu(false);
+        
+        // Update user in localStorage
+        const updatedUser = { ...user, status: newStatus };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      }
+    } catch (error) {
+      console.error("Failed to update status:", error);
+    }
+  };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    navigate("/login");
+    // Set status to offline before logout
+    updateStatus("offline").finally(() => {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      navigate("/login");
+    });
   };
 
   // Generate avatar initials from email
@@ -99,17 +163,66 @@ export default function Navbar() {
                 
                 {/* User menu */}
                 <div className="flex items-center gap-2 pl-3 border-l border-slate-700">
-                  <div 
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold"
-                    style={{ background: getAvatarColor(user?.email) }}
-                    title={user?.email}
-                  >
-                    {getInitials(user?.email)}
+                  {/* Profile with status dropdown */}
+                  <div className="relative" ref={menuRef}>
+                    <button 
+                      onClick={() => setShowStatusMenu(!showStatusMenu)}
+                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-800 rounded-lg transition-all"
+                    >
+                      <div 
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold relative"
+                        style={{ background: getAvatarColor(user?.email) }}
+                        title={user?.email}
+                      >
+                        {getInitials(user?.email)}
+                        <div className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator status={userStatus} size="sm" />
+                        </div>
+                      </div>
+                      <div className="hidden md:block text-left">
+                        <div className="text-sm font-medium text-slate-200">{user?.email?.split("@")[0]}</div>
+                        <div className="text-xs text-slate-400 capitalize">{user?.role}</div>
+                      </div>
+                    </button>
+                    
+                    {showStatusMenu && (
+                      <div className="absolute right-0 mt-2 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                        <div className="px-3 py-2 border-b border-slate-700">
+                          <p className="text-xs font-semibold text-slate-400 uppercase">Set Status</p>
+                        </div>
+                        <div className="py-1">
+                          <button
+                            onClick={() => updateStatus("online")}
+                            className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 hover:bg-slate-700 transition-all ${
+                              userStatus === "online" ? "bg-slate-700/50" : ""
+                            }`}
+                          >
+                            <StatusIndicator status="online" size="md" />
+                            <span className="text-slate-200">Online</span>
+                          </button>
+                          <button
+                            onClick={() => updateStatus("dnd")}
+                            className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 hover:bg-slate-700 transition-all ${
+                              userStatus === "dnd" ? "bg-slate-700/50" : ""
+                            }`}
+                          >
+                            <StatusIndicator status="dnd" size="md" />
+                            <span className="text-slate-200">Do Not Disturb</span>
+                          </button>
+                          <button
+                            onClick={() => updateStatus("offline")}
+                            className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 hover:bg-slate-700 transition-all ${
+                              userStatus === "offline" ? "bg-slate-700/50" : ""
+                            }`}
+                          >
+                            <StatusIndicator status="offline" size="md" />
+                            <span className="text-slate-200">Appear Offline</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="hidden md:block">
-                    <div className="text-sm font-medium text-slate-200">{user?.email?.split("@")[0]}</div>
-                    <div className="text-xs text-slate-400 capitalize">{user?.role}</div>
-                  </div>
+
                   <button 
                     onClick={logout} 
                     className="ml-2 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md transition-all"
